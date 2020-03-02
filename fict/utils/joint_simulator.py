@@ -121,7 +121,8 @@ class Simulator():
     def assign_cell_type(self,
                          target_neighbourhood_frequency,
                          tol = 1e-1,
-                         max_iter = 1e2):
+                         max_iter = 1e2,
+                         method = None):
         """Generate cell type assignment iteratively from a given neighbourhood
         frequency, require the coordinates being generated first by calling
         self.gen_coordinate.
@@ -129,6 +130,9 @@ class Simulator():
             target_neighbourhood_frequency: A n-by-n target neighbourhood freuency matrix,
                 n is the number of cell type, and ith row is the neighbourhood 
                 frequency of ith cell, target_neighbourhood_frequency[i].
+            tol: The error tolerance.
+            max_iter: Max iteraton.
+            method: Default is 'assign-cell', can be 'assign-neighbour'
         """
         self.cell_type_assignment = choice(np.arange(self.cell_n),
                                 size = self.sample_n,
@@ -139,32 +143,38 @@ class Simulator():
         iter_n = 0
         perm = np.arange(self.sample_n)
         cell_types = np.arange(self.cell_n)
+        error_record = []
         while error>tol and iter_n<max_iter:
             np.random.shuffle(perm)
             for i in perm:
-#                i_type = self.cell_type_assignment[i]
-#                mask = np.copy(self.adjacency[i])
-#                neighbour_n = np.sum(mask)-1
-#                mask[i] = False #Exclude the self count.
-#                reasign_type = np.random.choice(cell_types,
-#                                                size = neighbour_n,
-#                                                p = target_neighbourhood_frequency[i_type])
-#                self.cell_type_assignment[mask] = reasign_type
-                mask = np.copy(self.adjacency[i])
-                neighbour_matrix = self._neighbourhood_count[mask]
-                assign_prob = self._assign_probability(self._neighbourhood_count[i],
-                                                       neighbour_matrix,
-                                                       target_neighbourhood_frequency,
-                                                       self.cell_prior)
-                self.cell_type_assignment[i] = np.random.choice(cell_types,
-                                                                size = 1,
-                                                                p = assign_prob)[0]
+                if method is None:
+                    mask = np.copy(self.adjacency[i])
+                    neighbour_matrix = self._neighbourhood_count[mask]
+                    assign_prob = self._assign_probability(self._neighbourhood_count[i],
+                                                           neighbour_matrix,
+                                                           target_neighbourhood_frequency,
+                                                           self.cell_prior)
+                    self.cell_type_assignment[i] = np.random.choice(cell_types,
+                                                                    size = 1,
+                                                                    p = assign_prob)[0]
+                elif method=='assign-neighbour':
+                    i_type = self.cell_type_assignment[i]
+                    mask = np.copy(self.adjacency[i])
+                    neighbour_n = np.sum(mask)-1
+                    mask[i] = False #Exclude the self count.
+                    reasign_type = np.random.choice(cell_types,
+                                                    size = neighbour_n,
+                                                    p = target_neighbourhood_frequency[i_type])
+                    self.cell_type_assignment[mask] = reasign_type
+
             self._get_neighbourhood_frequency()
             iter_n+=1
             print(np.unique(self.cell_type_assignment,return_counts = True))
             if iter_n%1 == 0:
                 error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
+                error_record.append(error)
                 print("%d iteration, error %.2f"%(iter_n,error))
+        return error_record
     
     def _assign_probability(self,
                             neighbourhood_count,
