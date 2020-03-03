@@ -14,7 +14,8 @@ from numpy.random import uniform
 from numpy.random import choice
 from fict.utils.opt import valid_neighbourhood_frequency
 from math import factorial
-from fict.utils.random_generator import multinomial_probability as mp
+from random_generator import multinomial_wrapper as mp
+
 def get_gene_prior(gene_expression,cell_types,header = 0,):
     """Get the prior parameter (mean and std) of the given gene expression
     matrix and cell type assignment.
@@ -166,7 +167,6 @@ class Simulator():
                                                     size = neighbour_n,
                                                     p = target_neighbourhood_frequency[i_type])
                     self.cell_type_assignment[mask] = reasign_type
-
             self._get_neighbourhood_frequency()
             iter_n+=1
             print(np.unique(self.cell_type_assignment,return_counts = True))
@@ -234,21 +234,25 @@ class Simulator():
         for i in range(self.sample_n):
             current_t = self.cell_type_assignment[i]
             gene_expression.append(np.random.multivariate_normal(mean = self.g_mean[current_t],cov = self.g_cov[current_t]))
-        return np.asarray(gene_expression),self.cell_type_assignment,self.neighbourhood_frequency
-
+        return np.asarray(gene_expression),self.cell_type_assignment,self._neighbourhood_count
 
 class Dataloader():
-    def __init__(self,sim,for_eval = False):
+    def __init__(self,
+                 gene_expression,
+                 cell_neighbour,
+                 for_eval = False,
+                 cell_type_assignment = None):
         """Class for loading the data.
         Input Args:
-            sim: An instance of the Simulator.
+            gene_expression: A N-by-M matrix contain the gene expression for N samples and M genes.
+            cell_neighbour: A N-by-C matrix contain the neighbourhood count for N samples and C cell types.
             shuffle: A flag indicate if the data batch shuffle or not.
-            for_eval: If the data loader is for evaluation, if it is then iterate whole dataset only once.
+            for_eval: If the data loader is for evaluation, then iterate whole dataset only once.
+            cell_type_assignment: If the dataset is not for evaluation, then a length N vector indicate the
+                cell_type_assignment need to be provided.
         """
-        sim.gen_parameters()
-        gene_expression,cell_type,cell_neighbour = sim.gen_data()
         self.gene_expression = gene_expression
-        self.cell_type_assignment = cell_type
+        self.cell_type_assignment = cell_type_assignment
         self.cell_neighbour = cell_neighbour
         self.epochs_completed = 0
         self._index_in_epoch = 0
@@ -258,7 +262,10 @@ class Dataloader():
         
     def read_into_memory(self, index):
         gene_e = self.gene_expression[index]
-        cell_t = self.cell_type_assignment[index]
+        if self.for_eval:
+            cell_t = None
+        else:
+            cell_t = self.cell_type_assignment[index]
         cell_n = self.cell_neighbour[index]
         return gene_e, cell_t, cell_n
 
@@ -320,9 +327,8 @@ class Dataloader():
                 self._perm[start:end])
         return gene_batch,cell_type_batch,cell_neighbour_batch
 
-
-
 if __name__ == "__main__":
+    ### Hyper parameter setting
     sample_n = 1000 #Number of samples
     n_g = 100 #Number of genes
     n_c = 10 #Number of cell type
@@ -332,13 +338,15 @@ if __name__ == "__main__":
     coor_col = [5,6]
     header = 1
     data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
-#    data = pd.read_excel(data_f,header = header)
+    
+    ### Data preprocessing
+    data = pd.read_excel(data_f,header = header)
     gene_expression = data.iloc[:,gene_col]
     cell_types = data['Cell_class']
     type_tags = np.unique(cell_types)
     coordinates = data.iloc[:,coor_col]
     
-    #Choose only the n_c type cells
+    ### Choose only the n_c type cells
     if len(type_tags)<n_c:
         raise ValueError("Only %d cell types presented in the dataset, but require %d, reduce the number of cell type assigned."%(len(type_tags),n_c))
     mask = np.asarray([False]*len(cell_types))
@@ -347,21 +355,25 @@ if __name__ == "__main__":
     gene_expression = gene_expression[mask]
     cell_types = np.asarray(cell_types[mask])
     coordinates = np.asarray(coordinates[mask])
-    #
     
+    ### Generate prior from the given dataset.
     gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
     neighbour_freq_prior,tags,type_count = get_nf_prior(coordinates,cell_types)
     type_prior = type_count/np.sum(type_count)
     target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
-#    result = valid_neighbourhood_frequency(target_freq)
-#    target_freq = result[0]
+    result = valid_neighbourhood_frequency(target_freq)
+    target_freq = result[0]
     
+    ### Generate simulation dataset and load
     sim = Simulator(sample_n,n_g,n_c,density)
     sim.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
     sim.gen_coordinate(density = density)
-    sim.assign_cell_type(target_neighbourhood_frequency=target_freq)
-#    df = Dataloader(sim)
-#    batch_size = 100
-#    for i in range(10):
-#        batch = df.next_batch(batch_size,shuffle = True)
-##        
+    sim.assign_cell_type(target_neighbourhood_frequency=target_freq, method = "assign-neighbour")
+    gene_expression,cell_type,cell_neighbour = sim.gen_expression()
+    df = Dataloader(gene_expression,
+                    cell_neighbour,
+                    for_eval = False,
+                    cell_type_assignment = cell_type)
+    batch_size = 100
+    for i in range(10):
+        batch = df.next_batch(batch_size,shuffle = True)

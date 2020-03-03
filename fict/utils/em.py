@@ -8,11 +8,15 @@ Created on Sun Jan 19 21:28:03 2020
 
 import numpy as np
 from scipy.stats import multivariate_normal
-from scipy.stats import multinomial
+from random_generator import multinomial_wrapper
 from joint_simulator import Simulator
 from joint_simulator import Dataloader
+from joint_simulator import get_gene_prior
+from joint_simulator import get_nf_prior
+from opt import valid_neighbourhood_frequency
 from scipy.special import softmax
 from sklearn.metrics.cluster import adjusted_rand_score
+import pandas as pd
 
 #np.random.seed(2020)
 class EM():
@@ -105,7 +109,7 @@ class fict_model(EM):
         self.MNs = []
         for i in range(self.p['class_n']):
             self.Gs.append(multivariate_normal(self.p['g_mean'][i],self.p['g_cov'][i],allow_singular=True))
-            self.MNs.append(multinomial(self.neighbour_n,self.p['mn_p'][i]))
+            self.MNs.append(multinomial_wrapper(self.p['mn_p'][i]))
         self.Prior = self.p['prior']
         batch_n = gene_batch.shape[0]
         assert neighbour_batch.shape[0] == batch_n
@@ -163,20 +167,62 @@ class fict_model(EM):
         pass
 
 if __name__ == "__main__":
-    gene_n = 100
-    cell_type = 10
+#    ### Hyper parameter setting
+#    sample_n = 1000 #Number of samples
+#    n_g = 100 #Number of genes
+#    n_c = 10 #Number of cell type
+#    density = 20 #The average number of neighbour for each cells.
+#    threshold_distance = 1 # The threshold distance of neighbourhood.
+#    gene_col = np.arange(9,164)
+#    coor_col = [5,6]
+#    header = 1
+#    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
+#    
+#    ### Data preprocessing
+#    data = pd.read_excel(data_f,header = header)
+#    gene_expression = data.iloc[:,gene_col]
+#    cell_types = data['Cell_class']
+#    type_tags = np.unique(cell_types)
+#    coordinates = data.iloc[:,coor_col]
+#    
+#    ### Choose only the n_c type cells
+#    if len(type_tags)<n_c:
+#        raise ValueError("Only %d cell types presented in the dataset, but require %d, reduce the number of cell type assigned."%(len(type_tags),n_c))
+#    mask = np.asarray([False]*len(cell_types))
+#    for tag in type_tags[:n_c]:
+#        mask = np.logical_or(mask,cell_types==tag)
+#    gene_expression = gene_expression[mask]
+#    cell_types = np.asarray(cell_types[mask])
+#    coordinates = np.asarray(coordinates[mask])
+#    
+#    ### Generate prior from the given dataset.
+#    gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
+#    neighbour_freq_prior,tags,type_count = get_nf_prior(coordinates,cell_types)
+#    type_prior = type_count/np.sum(type_count)
+#    target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
+#    result = valid_neighbourhood_frequency(target_freq)
+#    target_freq = result[0]
+#    
+#    ### Generate simulation dataset and load
+#    sim = Simulator(sample_n,n_g,n_c,density)
+#    sim.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
+#    sim.gen_coordinate(density = density)
+#    sim.assign_cell_type(target_neighbourhood_frequency=target_freq, method = "assign-neighbour")
+#    df = Dataloader(sim)
+
+    ### Training the classifier from the simulation dataset and validation
+    gene_n = n_g
+    cell_type = n_c
     neighbour_n = 20
-    em_round = 1000
+    em_round = 500
 #    decays = [0.8,0.9,0.99]
 #    step_each_decay = 10 #Maximization step each EM round.
-    cell_n = 10000
+    cell_n = sample_n
     batch_n = 400
     threshold_distance = 1
     m = fict_model(gene_n,cell_type,neighbour_n)
-    sim = Simulator(cell_n,gene_n,cell_type,neighbour_n,threshold_distance)
-    dataloader = Dataloader(sim)
     for i in range(em_round):
-        batch_all = dataloader.next_batch(batch_n,shuffle = True)
+        batch_all = df.next_batch(batch_n,shuffle = True)
         batch = (batch_all[0],batch_all[2])
         label = batch_all[1]
         posterior = m.expectation(batch)
