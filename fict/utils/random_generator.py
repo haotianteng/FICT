@@ -7,6 +7,7 @@ Created on Mon Mar  2 00:44:40 2020
 """
 
 from scipy.stats import multinomial
+from scipy.stats import dirichlet
 import numpy as np
 
 class multinomial_wrapper(object):
@@ -39,4 +40,30 @@ class multinomial_wrapper(object):
             n = np.sum(count)
             f = self.pdf(n=n,p=self.p)
             results.append(f.logpmf(count))
+        return np.asarray(results)
+    
+class dirichlet_wrapper(object):
+    """A wrapper for the scipy multinomial distrbution allow a dynmic assigned n.
+    """
+    def __init__(self,p):
+        self.f = dirichlet
+        self.p = p
+    def pmf(self,count_batch):
+        batch_shape = count_batch.shape
+        if len(batch_shape) == 1:
+            return self.f.pdf(alpha=count_batch+1, x = self.p)
+        results = []
+        for count in count_batch:
+            pdf = self.f.pdf(alpha=count_batch+1, x = self.p)
+            results.append(pdf)
+        return np.asarray(results)
+    
+    def logpmf(self,count_batch):
+        batch_shape = count_batch.shape
+        if len(batch_shape) == 1:
+            return self.f.logpdf(alpha=count_batch+1, x = self.p)
+        results = []
+        for count in count_batch:
+            logpdf = self.f.logpdf(alpha=count+1, x = self.p)
+            results.append(logpdf)
         return np.asarray(results)

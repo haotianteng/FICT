@@ -14,7 +14,27 @@ from numpy.random import uniform
 from numpy.random import choice
 from fict.utils.opt import valid_neighbourhood_frequency
 from math import factorial
-from random_generator import multinomial_wrapper as mp
+from fict.utils.random_generator import multinomial_wrapper as mp
+from fict.utils.data_op import DataLoader
+import pickle
+
+def save_simulation(sim,file):
+    """Save a Simulator instance to file.
+    Args:
+        sim: A instance of the Simulator.
+        file: The file to save.
+    """
+    with open(file,'wb+') as f:
+        pickle.dump(sim,f)
+
+def load_simulation(file):
+    """Load a Simulator instance from file
+    Args:
+        file: A file path to load the simulator.
+    """
+    with open(file,'rb') as f:
+        instance = pickle.load(f)
+    return instance
 
 def get_gene_prior(gene_expression,cell_types,header = 0,):
     """Get the prior parameter (mean and std) of the given gene expression
@@ -72,10 +92,10 @@ class Simulator():
         gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
         target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
         result = valid_neighbourhood_frequency(target_freq)
-        target_freq = result[0]
+        self.target_freq = result[0]
         self.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
         self.gen_coordinate(density = density)
-        sim.assign_cell_type(target_neighbourhood_frequency=target_freq)
+        sim.assign_cell_type(target_neighbourhood_frequency=self.target_freq)
         return sim
     def gen_parameters(self,
                         gene_mean_prior = None,
@@ -145,15 +165,20 @@ class Simulator():
         perm = np.arange(self.sample_n)
         cell_types = np.arange(self.cell_n)
         error_record = []
+        mps = []
+        for i in np.arange(self.cell_n):
+            mps.append(mp(target_neighbourhood_frequency[i]))
         while error>tol and iter_n<max_iter:
             np.random.shuffle(perm)
             for i in perm:
-                if method is None:
+                if method is None or (method == "assign-cell"):
                     mask = np.copy(self.adjacency[i])
                     neighbour_matrix = self._neighbourhood_count[mask]
+                    neighbour_celltype = self.cell_type_assignment[mask]
                     assign_prob = self._assign_probability(self._neighbourhood_count[i],
                                                            neighbour_matrix,
-                                                           target_neighbourhood_frequency,
+                                                           neighbour_celltype,
+                                                           mps,
                                                            self.cell_prior)
                     self.cell_type_assignment[i] = np.random.choice(cell_types,
                                                                     size = 1,
@@ -179,7 +204,8 @@ class Simulator():
     def _assign_probability(self,
                             neighbourhood_count,
                             neighbourhood_matrix,
-                            target_neighbourhood_frequency,
+                            neighbourhood_cell_type,
+                            target_neighbourhood_frequency_pdf,
                             prior):
         """Calculate the posterior probability given the neighbourhood cell type.
         Args:
@@ -187,17 +213,19 @@ class Simulator():
                 types of the neighbourhood of given cell.
             neighbourhood_matrix:A X-by-N matrix rows contain the neighbourhood count
                 of the X neighbourhood cells of given cell.
-            target_neighbourhood_frequency_mn:A length N list contain the
+            neighbourhood_cell_type: A X length vector indicate the cell type of the neighbourhood.
+            target_neighbourhood_frequency_pdf:A length N list contain the
                 multinomial distribution of target frequency.
             prior: A length N vector indicate the prior probability.
         """
+        alpha=2.5
         posterior = np.zeros(self.cell_n)
         for i in range(self.cell_n):
-            posterior[i] = mp(neighbourhood_count,target_neighbourhood_frequency[i])/np.sum(neighbourhood_count)
-            for count in neighbourhood_matrix:
+            posterior[i] = target_neighbourhood_frequency_pdf[i].logpmf(neighbourhood_count)/np.sum(neighbourhood_count)*alpha
+            for j,count in enumerate(neighbourhood_matrix):
                 count = np.copy(count)
                 count[i] += 1
-                posterior[i] += mp(count,target_neighbourhood_frequency[i])/np.sum(count)
+                posterior[i] += target_neighbourhood_frequency_pdf[neighbourhood_cell_type[j]].logpmf(count)/np.sum(count)*alpha
 
         assign_prob = posterior + np.log(prior)
         assign_prob = softmax(assign_prob)
@@ -216,12 +244,9 @@ class Simulator():
         self._neighbourhood_frequency = self._neighbourhood_frequency/np.sum(self._neighbourhood_frequency,axis = 1,keepdims = True)
     
     def _get_neighbourhood_count(self):
-        if self._neighbourhood_count is None:
-            self._neighbourhood_count = np.zeros((self.sample_n,self.cell_n))
-        for i in range(self.sample_n):
-            neighbourhood_type = self.cell_type_assignment[self.adjacency[i]]
-            tag,count = np.unique(neighbourhood_type,return_counts = True)
-            self._neighbourhood_count[i,tag] = count
+        one_hot = np.zeros((self.sample_n,self.cell_n))
+        one_hot[np.arange(self.sample_n),self.cell_type_assignment] = 1
+        self._neighbourhood_count = np.matmul(self.adjacency,one_hot)
     
     def gen_expression(self,seed = None):
         """Generate gene expression, need to call assign_cell_type first.
@@ -236,96 +261,22 @@ class Simulator():
             gene_expression.append(np.random.multivariate_normal(mean = self.g_mean[current_t],cov = self.g_cov[current_t]))
         return np.asarray(gene_expression),self.cell_type_assignment,self._neighbourhood_count
 
-class Dataloader():
+class SimDataLoader(DataLoader):
     def __init__(self,
                  gene_expression,
                  cell_neighbour,
-                 for_eval = False,
-                 cell_type_assignment = None):
+                 cell_type_assignment):
         """Class for loading the data.
         Input Args:
             gene_expression: A N-by-M matrix contain the gene expression for N samples and M genes.
             cell_neighbour: A N-by-C matrix contain the neighbourhood count for N samples and C cell types.
-            shuffle: A flag indicate if the data batch shuffle or not.
-            for_eval: If the data loader is for evaluation, then iterate whole dataset only once.
             cell_type_assignment: If the dataset is not for evaluation, then a length N vector indicate the
                 cell_type_assignment need to be provided.
         """
-        self.gene_expression = gene_expression
-        self.cell_type_assignment = cell_type_assignment
-        self.cell_neighbour = cell_neighbour
-        self.epochs_completed = 0
-        self._index_in_epoch = 0
-        self.sample_n = sim.sample_n
-        self._perm = np.arange(self.sample_n)
-        self.for_eval = for_eval
-        
-    def read_into_memory(self, index):
-        gene_e = self.gene_expression[index]
-        if self.for_eval:
-            cell_t = None
-        else:
-            cell_t = self.cell_type_assignment[index]
-        cell_n = self.cell_neighbour[index]
-        return gene_e, cell_t, cell_n
+        super().__init__(xs = (gene_expression,cell_neighbour),
+                         y = cell_type_assignment,
+                         for_eval = False)
 
-    def next_batch(self, batch_size, shuffle=True):
-        """Return next batch in batch_size from the data set.
-            Input Args:
-                batch_size:A scalar indicate the batch size.
-                shuffle: boolean, indicate if the data should be shuffled after each epoch.
-            Output Args:
-                inputX,sequence_length,label_batch: tuple of (indx,vals,shape)
-        """
-        if self.epochs_completed>=1 and self.for_eval:
-            print("Warning, evaluation dataset already finish one iteration.")
-        start = self._index_in_epoch
-        # Shuffle for the first epoch
-        if self.epochs_completed == 0 and start == 0:
-            if shuffle:
-                np.random.shuffle(self._perm)
-        # Go to the next epoch
-        if start + batch_size >= self.sample_n:
-            # Finished epoch
-            self.epochs_completed += 1
-            # Get the rest samples in this epoch
-            rest_sample_n = self.sample_n - start
-            gene_rest_part, cell_type_rest_part,cell_neighbour_rest_part = self.read_into_memory(
-                self._perm[start:self.sample_n])
-            start = 0
-            if self.for_eval:
-                gene_batch = gene_rest_part
-                cell_type_batch = cell_type_rest_part
-                cell_neighbour_batch = cell_neighbour_rest_part
-                self._index_in_epoch = 0
-                end = 0
-            # Shuffle the data
-            else:
-                if shuffle:
-                    np.random.shuffle(self._perm)
-                # Start next epoch
-                self._index_in_epoch = batch_size - rest_sample_n
-                end = self._index_in_epoch
-                gene_new_part, cell_type_new_part,cell_neighbour_new_part = self.read_into_memory(
-                    self._perm[start:end])
-                if gene_rest_part.shape[0] == 0:
-                    gene_batch = gene_new_part
-                    cell_type_batch = cell_type_new_part
-                    cell_neighbour_batch = cell_neighbour_new_part
-                elif gene_new_part.shape[0] == 0:
-                    gene_batch = gene_rest_part
-                    cell_type_batch = cell_type_rest_part
-                    cell_neighbour_batch = cell_neighbour_rest_part
-                else:
-                    gene_batch = np.concatenate((gene_rest_part, gene_new_part), axis=0)
-                    cell_type_batch = np.concatenate((cell_type_rest_part, cell_type_new_part), axis=0)
-                    cell_neighbour_batch = np.concatenate((cell_neighbour_rest_part, cell_neighbour_new_part), axis=0)
-        else:
-            self._index_in_epoch += batch_size
-            end = self._index_in_epoch
-            gene_batch, cell_type_batch,cell_neighbour_batch = self.read_into_memory(
-                self._perm[start:end])
-        return gene_batch,cell_type_batch,cell_neighbour_batch
 
 if __name__ == "__main__":
     ### Hyper parameter setting
@@ -338,6 +289,7 @@ if __name__ == "__main__":
     coor_col = [5,6]
     header = 1
     data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
+    model_f = "/home/heavens/CMU/FISH_Clustering/test_sim1"
     
     ### Data preprocessing
     data = pd.read_excel(data_f,header = header)
@@ -370,10 +322,5 @@ if __name__ == "__main__":
     sim.gen_coordinate(density = density)
     sim.assign_cell_type(target_neighbourhood_frequency=target_freq, method = "assign-neighbour")
     gene_expression,cell_type,cell_neighbour = sim.gen_expression()
-    df = Dataloader(gene_expression,
-                    cell_neighbour,
-                    for_eval = False,
-                    cell_type_assignment = cell_type)
-    batch_size = 100
-    for i in range(10):
-        batch = df.next_batch(batch_size,shuffle = True)
+    save_simulation(sim,model_f)
+    sim2 = load_simulation(model_f)
