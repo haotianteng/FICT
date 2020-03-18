@@ -9,16 +9,40 @@ Created on Tue Mar  3 04:05:14 2020
 import numpy as np
 from scipy.stats import multivariate_normal
 from fict.utils.random_generator import dirichlet_wrapper
-from fict.utils.joint_simulator import Simulator
-from fict.utils.joint_simulator import SimDataLoader
-from fict.utils.joint_simulator import get_gene_prior
-from fict.utils.joint_simulator import get_nf_prior
-from fict.utils.opt import valid_neighbourhood_frequency
 from scipy.special import softmax
-from sklearn.metrics.cluster import adjusted_rand_score
-import pandas as pd
 from fict.utils.em import EM
-from fict.fict_input import RealDataLoader
+from sklearn.decomposition import PCA
+from sklearn import manifold
+from time import time
+
+def pca_reduce(X, dims=2):
+    """ Reduce the dimensions of X down to dims using PCA
+    X has shape (n, d)
+    Returns: The reduced X of shape (n, dims)
+    		 The fitted PCA model used to reduce X
+    """
+    print("reducing dimensions using PCA")
+    X = X - np.mean(X,axis = 0,keepdims = True)
+    X = X/np.std(X,axis = 0, keepdims = True)
+    pca = PCA(n_components = dims)
+    pca.fit(X)
+    X_reduced = pca.transform(X)
+    return X_reduced
+
+def tsne_reduce(X,dims = 5):
+    tsne = manifold.TSNE(n_components=dims, init='pca', random_state=0)
+    t_expression = tsne.fit_transform(X)
+    return t_expression
+
+#def select_gene(X,n_genes = 25):
+#    """Select the significant genes by the coefficient of variation.
+#    Args:
+#        X: A N-by-M gene expression matrix, where N is the number of sample,
+#            M is the number of genes.
+#    """
+#    mean = np.mean(X,axis = )
+#    cv = 
+
 
 class FICT_EM(EM):
     def __init__(self,
@@ -54,8 +78,12 @@ class FICT_EM(EM):
     @property
     def class_n(self):
         return self.p['class_n']
+    
+    @property
+    def gene_n(self):
+        return self.p['gene_n']
             
-    def expectation(self,batch,no_spatio = False):
+    def expectation(self,batch,spatio_factor = 0.2,gene_factor=1.0,prior_factor = 1.0):
         gene_batch,neighbour_batch = batch
         self.Gs = []
         self.MNs = []
@@ -70,56 +98,62 @@ class FICT_EM(EM):
             lpx1z = self.Gs[i].logpdf(gene_batch)
             lpy1z = self.MNs[i].logpmf(neighbour_batch)
             lpz = np.log(self.Prior[i])
-            if no_spatio:
-                posterior[i,:] = lpx1z + lpz
-            else:
-                posterior[i,:] = lpx1z + lpy1z + lpz
+            posterior[i,:] = gene_factor*lpx1z + spatio_factor*lpy1z + prior_factor*lpz
+        
         return softmax(posterior,axis = 0)
     
     def maximization(self,
                      batch,posterior,
                      decay = 0.9,
-                     pseudo = 1e-5):
+                     pseudo = 1e-5,
+                     update_spatio_model = True,
+                     update_gene_model = True):
         """Maximization step for the EM algorithm
         Input Args:
             batch: A tuple contain (gene_batch, nieghbour_batch)
-                gene_batch [cell_n,gene_n]:The input batch of the gene expression data.
+                gene_batch [batch_n,gene_n]:The input batch of the gene expression data.
                 neighbour_batch [cell_n,class_n]:The batch contain the count of neighbourhood.
             posterior [class_n,cell_n]: The posterior probability from the expectation step.
+            update_saptio_model: Boolean variable indicate if we want to update
+                the parameters of the multinomial spatial model.
+            update_gene_model: Boolean variable indicate if we want to update
+                the parameters of the gene expression model.
         """
         gene_batch,neighbour_batch = batch
         batch_n = gene_batch.shape[0]
         assert neighbour_batch.shape[0] == batch_n
         post_sum = np.sum(posterior,axis = 1,keepdims = True)
         post_sum = post_sum + pseudo
-        self.p['g_mean'] = self._ema(self.p['g_mean'], 
-                                     np.matmul(posterior,gene_batch)/post_sum,
-                                     decay = decay)
-        for i in range(self.class_n):
-            batch_norm = gene_batch - self.p['g_mean'][i]
-            cov = np.matmul(posterior[i]*np.transpose(batch_norm),batch_norm)
-            self.p['g_cov'][i] = self._ema(self.p['g_cov'][i],
-                                           cov/post_sum[i],
-                                           decay = decay)
-        self.p['prior'] = self._ema(self.p['prior'],
-                                    post_sum[:,0]/batch_n,
-                                    decay = decay)
-        self.p['prior'] = self._renormalize(self.p['prior'],axis = 0)
-        temp_mn = np.matmul(posterior,neighbour_batch)
-        mn_sum = np.sum(temp_mn,axis = 1,keepdims = True)
-        mn_sum = mn_sum + pseudo
-        self.p['mn_p'] = self._ema(self.p['mn_p'],
-                                   temp_mn/mn_sum,
-                                   decay = decay)
-        self.p['mn_p'] = self._renormalize(self.p['mn_p'])
-    def _ema(self,old_v,new_v,decay = 0.8):
-        """The Exponential Moving Average update of a variable.
-        """
-        return decay*old_v + (1-decay)*new_v
-    def _renormalize(self,p,axis = 1):
-        """Renormalize the given probability distribution p along axis
-        """
-        return p/np.sum(p,axis = axis,keepdims = True)
+        if update_gene_model:
+            mean_estimate = np.matmul(posterior,gene_batch)/post_sum
+            for i in range(self.class_n):
+#                self.p['g_mean'][i] = self._rescaling_gradient(self.p['g_mean'][i], 
+#                                             mean_estimate[i],
+#                                             np.linalg.inv(self.p['g_cov'][i]),
+#                                             step_size = 1-decay)
+                self.p['g_mean'][i] = mean_estimate[i]
+                
+            for i in range(self.class_n):
+                batch_norm = gene_batch - self.p['g_mean'][i]
+                cov = np.matmul(posterior[i]*np.transpose(batch_norm),batch_norm)
+#                self.p['g_cov'][i] = self._ema(self.p['g_cov'][i],
+#                                               cov/post_sum[i],
+#                                               decay = decay)
+                self.p['g_cov'][i] = cov/post_sum[i]
+#        new_prior = self._entropic_descent(np.reshape(self.p['prior'],(1,self.class_n)),
+#                                    np.reshape(post_sum[:,0]/batch_n,(1,self.class_n)),
+#                                    step_size = 1-decay)
+#        self.p['prior'] = np.reshape(new_prior,self.class_n)
+        self.p['prior'] = (post_sum[:,0]+1/self.class_n)/batch_n
+        if update_spatio_model:
+            temp_mn = np.matmul(posterior,neighbour_batch)
+            mn_sum = np.sum(temp_mn,axis = 1,keepdims = True)
+            mn_sum = mn_sum + pseudo
+#            self.p['mn_p'] = self._entropic_descent(self.p['mn_p'],
+#                                      temp_mn/mn_sum,
+#                                      step_size = 1 - decay)
+            self.p['mn_p'] = temp_mn/mn_sum
+
     def get_neighbour_count(posterior,adjacency_matrix):
         """Obtain the count of neighbourhood from the given posterior matrix and
         the adjacency matrix.
@@ -133,98 +167,3 @@ class FICT_EM(EM):
         """
         return np.transpose(np.matmul(posterior,adjacency_matrix))
 
-if __name__ == "__main__":
-    ## Script test and running example.
-    ### Hyper parameter setting
-#    sample_n = 1000 #Number of samples
-#    n_g = 100 #Number of genes
-#    n_c = 10 #Number of cell type
-#    density = 20 #The average number of neighbour for each cells.
-#    threshold_distance = 1 # The threshold distance of neighbourhood.
-#    gene_col = np.arange(9,164)
-#    coor_col = [5,6]
-#    header = 1
-#    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
-#    
-#    ### Data preprocessing
-#    data = pd.read_excel(data_f,header = header)
-#    gene_expression = data.iloc[:,gene_col]
-#    cell_types = data['Cell_class']
-#    type_tags = np.unique(cell_types)
-#    coordinates = data.iloc[:,coor_col]
-#    
-#    ### Choose only the n_c type cells
-#    if len(type_tags)<n_c:
-#        raise ValueError("Only %d cell types presented in the dataset, but require %d, reduce the number of cell type assigned."%(len(type_tags),n_c))
-#    mask = np.asarray([False]*len(cell_types))
-#    for tag in type_tags[:n_c]:
-#        mask = np.logical_or(mask,cell_types==tag)
-#    gene_expression = gene_expression[mask]
-#    cell_types = np.asarray(cell_types[mask])
-#    coordinates = np.asarray(coordinates[mask])
-# 
-#    ## Training a classifier from the simulation dataset and validation
-#    ### Generate prior from the given dataset.
-#    gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
-#    neighbour_freq_prior,tags,type_count = get_nf_prior(coordinates,cell_types)
-#    type_prior = type_count/np.sum(type_count)
-#    target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
-#    result = valid_neighbourhood_frequency(target_freq)
-#    target_freq = result[0]
-#    
-#    ### Generate simulation dataset and load
-#    sim = Simulator(sample_n,n_g,n_c,density)
-#    sim.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
-#    sim.gen_coordinate(density = density)
-#    sim.assign_cell_type(target_neighbourhood_frequency=target_freq, method = "assign-neighbour")
-#    gene_expression,cell_type,cell_neighbour = sim.gen_expression()
-#    df = SimDataloader(gene_expression,
-#                    cell_neighbour,
-#                    for_eval = False,
-#                    cell_type_assignment = cell_type)
-#    gene_n = n_g
-#    cell_type = n_c
-#    neighbour_n = 20
-#    em_round = 500
-##    decays = [0.8,0.9,0.99]
-##    step_each_decay = 10 #Maximization step each EM round.
-#    cell_n = sample_n
-#    batch_n = 400
-#    threshold_distance = 1
-#    m = FICT_EM(gene_n,cell_type)
-#    for i in range(em_round):
-#        batch_all = df.next_batch(batch_n,shuffle = True)
-#        batch = (batch_all[0],batch_all[2])
-#        label = batch_all[1]
-#        posterior = m.expectation(batch)
-#        m.maximization(batch,posterior,decay = 0.9)
-#        predict = np.argmax(posterior,axis=0)
-#        Accuracy = adjusted_rand_score(predict,label)
-#        if i%10 == 0:
-#            print("%d Round Accuracy:%f"%(i,Accuracy))
-    
-    ## Training the classifier from the real dataset and validation
-    m2 = FICT_EM(gene_expression.shape[1],n_c)
-    renew_rounds = 10
-    batch_n = 2000
-    em_round = 5000
-    threshold_distance = 20
-    gene_expression = np.asarray(gene_expression)
-    init_prob = np.ones((gene_expression.shape[0],n_c))*1.0/n_c
-    real_df = RealDataLoader(gene_expression,
-                             coordinates,
-                             threshold_distance = threshold_distance,
-                             cell_type_probability = init_prob,
-                             cell_labels = cell_types,
-                             for_eval = False)
-    for i in range(em_round):
-        x_batch,y = real_df.next_batch(batch_n,shuffle = True)
-        posterior = m2.expectation(x_batch)
-        m2.maximization(x_batch,posterior,decay = 0.5)
-        predict = np.argmax(posterior,axis=0)
-        Accuracy = adjusted_rand_score(predict,y)
-        if i%renew_rounds == 0:
-            posterior_all = m2.expectation(real_df.xs)
-            real_df.renew_neighbourhood(np.transpose(posterior_all))
-        if i%10 == 0:
-            print("%d Round Accuracy:%f"%(i,Accuracy))

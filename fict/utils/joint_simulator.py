@@ -15,7 +15,7 @@ from numpy.random import choice
 from fict.utils.opt import valid_neighbourhood_frequency
 from math import factorial
 from fict.utils.random_generator import multinomial_wrapper as mp
-from fict.utils.data_op import DataLoader
+from fict.utils.data_op import DataLoader,KL_divergence
 import pickle
 
 def save_simulation(sim,file):
@@ -76,7 +76,7 @@ class Simulator():
         gene_n: The number of genes for each cell.
         cell_type_n: The number of cell types.
         density: The number o fcell in the unit cycle(also it's the average neighbourhood)
-        seed: Random seed, default is 1992.
+        seed: Random seed, default KL_divergenceis 1992.
     """
     def __init__(self,
                  sample_n,
@@ -99,6 +99,7 @@ class Simulator():
         return sim
     def gen_parameters(self,
                         gene_mean_prior = None,
+                        cell_prior = None,
                         seed = None):
         self.all_types = np.arange(self.cell_n)
         if seed is None:
@@ -110,8 +111,11 @@ class Simulator():
             self.g_mean += gene_mean_prior
         g_cov = np.random.rand(self.cell_n,self.gene_n,self.gene_n)
         self.g_cov = np.asarray([np.dot(x,x.transpose())/self.gene_n for x in g_cov])
-        cell_prior = np.random.random(self.cell_n)
-        self.cell_prior = softmax(cell_prior+1)
+        if cell_prior is None:
+            cell_prior = np.random.random(self.cell_n)
+            self.cell_prior = softmax(cell_prior+1)
+        else:
+            self.cell_prior = cell_prior/np.sum(cell_prior)
         self._neighbourhood_count = None
         self._neighbourhood_frequency = None
         
@@ -173,61 +177,79 @@ class Simulator():
             for i in perm:
                 if method is None or (method == "assign-cell"):
                     mask = np.copy(self.adjacency[i])
-                    neighbour_matrix = self._neighbourhood_count[mask]
-                    neighbour_celltype = self.cell_type_assignment[mask]
-                    assign_prob = self._assign_probability(self._neighbourhood_count[i],
-                                                           neighbour_matrix,
-                                                           neighbour_celltype,
+                    mask[i] = False #Exclude the self count.
+                    assign_prob = self._assign_probability(i,
+                                                           self._neighbourhood_count[i],
+                                                           mask,
                                                            mps,
                                                            self.cell_prior)
                     self.cell_type_assignment[i] = np.random.choice(cell_types,
                                                                     size = 1,
                                                                     p = assign_prob)[0]
+                    self._get_neighbourhood_frequency()
                 elif method=='assign-neighbour':
                     i_type = self.cell_type_assignment[i]
                     mask = np.copy(self.adjacency[i])
-                    neighbour_n = np.sum(mask)-1
                     mask[i] = False #Exclude the self count.
+                    neighbour_n = np.sum(mask)
+                    self.cell_type_assignment[i] = np.random.choice(cell_types,
+                                                                    size = 1,
+                                                                    p = self.cell_prior)[0]
                     reasign_type = np.random.choice(cell_types,
                                                     size = neighbour_n,
                                                     p = target_neighbourhood_frequency[i_type])
                     self.cell_type_assignment[mask] = reasign_type
+
             self._get_neighbourhood_frequency()
             iter_n+=1
-            print(np.unique(self.cell_type_assignment,return_counts = True))
-            if iter_n%1 == 0:
+            if iter_n%10 == 0:
                 error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
                 error_record.append(error)
+                klds = np.empty(self.cell_n)
+                for i, freq in enumerate(self._neighbourhood_frequency):
+                    klds[i] = KL_divergence(target_neighbourhood_frequency[i],freq)
                 print("%d iteration, error %.2f"%(iter_n,error))
+                print("KL divergence %s"%(",".join([str(round(x,2)) for x in klds])))
+                print(np.unique(self.cell_type_assignment,return_counts = True))
         return error_record
     
     def _assign_probability(self,
+                            cell_index,
                             neighbourhood_count,
-                            neighbourhood_matrix,
-                            neighbourhood_cell_type,
+                            neighbourhood_mask,
                             target_neighbourhood_frequency_pdf,
                             prior):
         """Calculate the posterior probability given the neighbourhood cell type.
         Args:
             neighbourhood_count: A length N vector indicate the count of N cell 
                 types of the neighbourhood of given cell.
-            neighbourhood_matrix:A X-by-N matrix rows contain the neighbourhood count
-                of the X neighbourhood cells of given cell.
-            neighbourhood_cell_type: A X length vector indicate the cell type of the neighbourhood.
+            neighbourhood_mask: A length N boolean vector indicate the neighbourhood
+                of current cell.
             target_neighbourhood_frequency_pdf:A length N list contain the
                 multinomial distribution of target frequency.
             prior: A length N vector indicate the prior probability.
         """
-        alpha=2.5
+        alpha=1
+        neighbourhood_matrix = self._neighbourhood_count[neighbourhood_mask]
+        neighbourhood_cell_type = self.cell_type_assignment[neighbourhood_mask]
         posterior = np.zeros(self.cell_n)
+        other_mask = np.logical_not(neighbourhood_mask)
+        other_mask[cell_index] = False
+        nb_count_other = self._neighbourhood_count[other_mask]
+        posterior_count= np.zeros((self.cell_n,self.cell_n))
         for i in range(self.cell_n):
-            posterior[i] = target_neighbourhood_frequency_pdf[i].logpmf(neighbourhood_count)/np.sum(neighbourhood_count)*alpha
+#            posterior[i] = target_neighbourhood_frequency_pdf[i].logpmf(neighbourhood_count)/np.sum(neighbourhood_count)*alpha
+#            for j,count in enumerate(neighbourhood_matrix):
+#                count = np.copy(count)
+#                count[i] += 1
+#                posterior[i] += target_neighbourhood_frequency_pdf[neighbourhood_cell_type[j]].logpmf(count)/np.sum(count)*alpha
+            posterior_count[i,:] = np.sum(nb_count_other[self.cell_type_assignment[other_mask]==i],axis = 0)
             for j,count in enumerate(neighbourhood_matrix):
-                count = np.copy(count)
                 count[i] += 1
-                posterior[i] += target_neighbourhood_frequency_pdf[neighbourhood_cell_type[j]].logpmf(count)/np.sum(count)*alpha
-
-        assign_prob = posterior + np.log(prior)
+                posterior_count[neighbourhood_cell_type[j],:] += count
+        for i in range(self.cell_n):
+            posterior[i] = target_neighbourhood_frequency_pdf[i].logpmf(posterior_count[i])
+        assign_prob = posterior+np.log(prior)
         assign_prob = softmax(assign_prob)
         return assign_prob
         
@@ -248,7 +270,10 @@ class Simulator():
         one_hot[np.arange(self.sample_n),self.cell_type_assignment] = 1
         self._neighbourhood_count = np.matmul(self.adjacency,one_hot)
     
-    def gen_expression(self,seed = None):
+    def gen_expression(self,
+                       zeroing = True, 
+                       seed = None,
+                       drop_rate = None):
         """Generate gene expression, need to call assign_cell_type first.
         """
         gene_expression = []
@@ -256,9 +281,19 @@ class Simulator():
             np.random.seed(self.seed)
         else:
             np.random.seed(seed)
+        if drop_rate is not None:
+            assert len(drop_rate) ==  self.gene_n
+            mask = np.empty((self.sample_n,self.gene_n),dtype = bool)
+            for i in np.arange(self.gene_n):
+                mask[:,i] = np.random.choice([True,False],size = (self.sample_n),p = [drop_rate[i],1-drop_rate[i]])
         for i in range(self.sample_n):
             current_t = self.cell_type_assignment[i]
-            gene_expression.append(np.random.multivariate_normal(mean = self.g_mean[current_t],cov = self.g_cov[current_t]))
+            current_expression = np.random.multivariate_normal(mean = self.g_mean[current_t],cov = self.g_cov[current_t])
+            if zeroing:
+                current_expression[current_expression<0] = 0
+            if drop_rate is not None:
+                current_expression[mask[i,:]] = 0
+            gene_expression.append(current_expression)
         return np.asarray(gene_expression),self.cell_type_assignment,self._neighbourhood_count
 
 class SimDataLoader(DataLoader):
@@ -292,7 +327,7 @@ if __name__ == "__main__":
     model_f = "/home/heavens/CMU/FISH_Clustering/test_sim1"
     
     ### Data preprocessing
-    data = pd.read_excel(data_f,header = header)
+#    data = pd.read_excel(data_f,header = header)
     gene_expression = data.iloc[:,gene_col]
     cell_types = data['Cell_class']
     type_tags = np.unique(cell_types)
@@ -310,6 +345,7 @@ if __name__ == "__main__":
     
     ### Generate prior from the given dataset.
     gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
+    drop_rate = np.sum(gene_expression==0,axis = 0)/(gene_expression.shape[0])
     neighbour_freq_prior,tags,type_count = get_nf_prior(coordinates,cell_types)
     type_prior = type_count/np.sum(type_count)
     target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
@@ -321,6 +357,6 @@ if __name__ == "__main__":
     sim.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
     sim.gen_coordinate(density = density)
     sim.assign_cell_type(target_neighbourhood_frequency=target_freq, method = "assign-neighbour")
-    gene_expression,cell_type,cell_neighbour = sim.gen_expression()
+    gene_expression,cell_type,cell_neighbour = sim.gen_expression(drop_rate = drop_rate[:n_g])
     save_simulation(sim,model_f)
     sim2 = load_simulation(model_f)

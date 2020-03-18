@@ -7,6 +7,54 @@ Created on Sun Mar  8 19:43:29 2020
 """
 import numpy as np
 from scipy.spatial.distance import cdist
+from sklearn.decomposition import PCA
+
+def tag2int(label):
+    tags = np.unique(label)
+    label_n = len(label)
+    int_label = np.empty(label_n,dtype = np.int)
+    for tag_idx,tag in enumerate(tags):
+        int_label[label==tag] = tag_idx
+    return int_label,tags
+
+def one_hot_vector(label):
+    label_n = len(label)
+    if label.dtype != np.int:
+        print("Input vector has a dtype %s"%(label.dtype))
+        print("However a int type is required, transfer the data type.")
+        label = label.astype(int)
+    tags = np.unique(label)
+    class_n = len(tags)
+    one_hot = np.zeros((label_n,class_n))
+    for tag_idx,tag in enumerate(tags):
+        one_hot[label==tag,tag_idx] = 1
+    return one_hot
+    
+def pca_reduce(X, dims=2):
+    """ Reduce the dimensions of X down to dims using PCA
+    X has shape (n, d)
+    Returns: The reduced X of shape (n, dims)
+    		 The fitted PCA model used to reduce X
+    """
+    print("reducing dimensions using PCA")
+    X = X - np.mean(X,axis = 0,keepdims = True)
+    X = X/np.std(X,axis = 0, keepdims = True)
+    pca = PCA(n_components = dims)
+    pca.fit(X)
+    X_reduced = pca.transform(X)
+    return X_reduced
+
+def KL_divergence(prob1,prob2,pesudo=1e-6):
+    if 0 in prob1:
+        prob1 = prob1+pesudo
+        prob1 = prob1/np.sum(prob1)
+        print("Zero element in the first distribution, add pesudo count %.2f."%(pesudo))
+    if 0 in prob2:
+        prob2 = prob2+pesudo
+        prob2 = prob2/np.sum(prob2)
+        print("Zero element in the second distribution, add pesudo count %.2f."%(pesudo))
+    kld = np.sum([x*np.log(x/y) for x,y in zip(prob1,prob2)])
+    return kld
 
 def get_adjacency(coordinate,
                   threshold_distance):
@@ -34,7 +82,7 @@ def get_neighbourhood_count(adjacency,
         one_hot = label
     else:
         label_n = len(tags)
-        one_hot = np.zeros(sample_n,label_n)
+        one_hot = np.zeros((sample_n,label_n))
         one_hot[np.arange(sample_n),label] = 1
     if exclude_self:
         diag_mask = np.eye(sample_n).astype(bool)
