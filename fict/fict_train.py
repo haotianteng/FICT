@@ -56,38 +56,39 @@ if __name__ == "__main__":
     gene_round = 100
     spatial_round = 100
     both_round = 50
-    threshold_distance = 50
-    int_label,tags = tag2int(real_loader.y)
-    one_hot_label = one_hot_vector(int_label)
-    real_loader.renew_neighbourhood(one_hot_label,threshold_distance = threshold_distance)
-#    print("Begin training using gene expression and spatio information.")
-#    accur_record_both = train(m2,
-#          0.5,
-#          both_round,
-#          real_loader,
-#          batch_n,
-#          spatio_factor = 0)
-    print("Train the spatio model only.")
-#    accur_record_spatio = train(m2,
-#          0.5,
-#          spatial_round,
-#          real_loader,
-#          batch_n,
-#          spatio_factor = 2.0,
-#          gene_factor = 0,
-#          prior_factor = 0.0,
-#          update_spatio = True,
-#          update_gene = False)
-    nb_count = real_loader.xs[1]
-    y = real_loader.y
-    tags = np.unique(y)
-    for i,tag in enumerate(tags):    
-        mean_nb_count = np.mean(nb_count[y==tag],axis = 0)
-        m2.p['mn_p'][i] = mean_nb_count/np.sum(mean_nb_count)
-    posterior = m2.expectation(real_loader.xs,
-                   spatio_factor = 1,
-                   gene_factor = 0,
-                   prior_factor = 0)
-    predict = np.argmax(posterior,axis=0) 
-    accuracy = adjusted_rand_score(predict,y)
-    print(accuracy)
+    for threshold_distance in np.arange(10,200,10):
+        int_label,tags = tag2int(real_loader.y)
+        one_hot_label = one_hot_vector(int_label)
+        real_loader.renew_neighbourhood(one_hot_label,
+                                        threshold_distance = threshold_distance,
+                                        exclude_self = True)
+    #    print("Begin training using gene expression and spatio information.")
+    #    accur_record_both = train(m2,
+    #          0.5,
+    #          both_round,
+    #          real_loader,
+    #          batch_n,
+    #          spatio_factor = 0)
+        print("Train the spatio model only.")
+    #    accur_record_spatio = train(m2,
+    #          0.5,
+    #          spatial_round,
+    #          real_loader,
+    #          batch_n,
+    #          spatio_factor = 2.0,
+    #          gene_factor = 0,
+    #          prior_factor = 0.0,
+    #          update_spatio = True,
+    #          update_gene = False)
+        nb_count = real_loader.xs[1]
+        y = real_loader.y
+        for i,tag in enumerate(tags):
+            mean_nb_count = np.mean(nb_count[y==tag],axis = 0)
+            m2.p['mn_p'][i] = mean_nb_count/np.sum(mean_nb_count)
+        posterior = m2.expectation(real_loader.xs,
+                       spatio_factor = 1,
+                       gene_factor = 0,
+                       prior_factor = 0)
+        predict = np.argmax(posterior,axis=0) 
+        accuracy = adjusted_rand_score(predict,y)
+        print("Accuracy with spatio information only and %.2f threshold distance %.4f"%(threshold_distance,accuracy))

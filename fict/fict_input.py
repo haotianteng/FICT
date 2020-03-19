@@ -41,12 +41,12 @@ class RealDataLoader(dop.DataLoader):
                        y = self.cell_labels,
                        for_eval = self.for_eval)
         
-    def renew_neighbourhood(self,type_prob,threshold_distance = None):
+    def renew_neighbourhood(self,type_prob,threshold_distance = None,exclude_self= False):
         if threshold_distance is not None:
             self.adjacency = dop.get_adjacency(self.coordinate,threshold_distance)
         self.nb_count = dop.get_neighbourhood_count(self.adjacency,
                                                 type_prob,
-                                                exclude_self = False,
+                                                exclude_self = exclude_self,
                                                 one_hot_label = True)
         self.xs = (self.gene_expression,self.nb_count)
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     header = 0
 #    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
     data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv"
-    save_f = "/media/heavens/LaCie/MERFISH_data/MERFISH_2018/df_"
+    save_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/df_"
     ### Data preprocessing
     print("Reading data from %s"%(data_f))
     if data_f.endswith('.xlsx'):
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         gene_expression = data.iloc[:,gene_col]
         type_tags = np.unique(cell_types)
         coordinates = data.iloc[:,coor_col]
-        
+        coordinates = np.asarray(coordinates)
         ### Choose only the n_c type cells
 #        print("Choose the subdataset of %d cell types"%(n_c))
 #        if len(type_tags)<n_c:

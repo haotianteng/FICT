@@ -8,6 +8,7 @@ Created on Sun Mar  8 19:43:29 2020
 import numpy as np
 from scipy.spatial.distance import cdist
 from sklearn.decomposition import PCA
+from scipy.sparse import dok_matrix
 
 def tag2int(label):
     tags = np.unique(label)
@@ -58,8 +59,15 @@ def KL_divergence(prob1,prob2,pesudo=1e-6):
 
 def get_adjacency(coordinate,
                   threshold_distance):
-    distance_matrix = cdist(coordinate,coordinate,'euclidean')
-    adjacency = distance_matrix<threshold_distance
+    sample_n = coordinate.shape[0]
+    adjacency = dok_matrix((sample_n,sample_n),bool)
+    for i in np.arange(sample_n):
+        difference = coordinate - coordinate[i]
+        euclidean_distance = np.sqrt(difference[:,0]**2+difference[:,1]**2)
+        adjacency_array = euclidean_distance<threshold_distance
+        cols = np.where(adjacency_array)[0]
+        for col in cols:
+            adjacency[i,col] = True
     return adjacency
 
 def get_neighbourhood_count(adjacency, 
@@ -87,7 +95,7 @@ def get_neighbourhood_count(adjacency,
     if exclude_self:
         diag_mask = np.eye(sample_n).astype(bool)
         adjacency[diag_mask] = 0
-    nb_count = np.matmul(adjacency,one_hot)
+    nb_count = adjacency.dot(one_hot)
     return nb_count
 
 class DataLoader():
