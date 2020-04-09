@@ -8,7 +8,7 @@ Created on Tue Mar  3 04:05:14 2020
 
 import numpy as np
 from scipy.stats import multivariate_normal
-from fict.utils.random_generator import dirichlet_wrapper
+from fict.utils.random_generator import continuous_multinomial
 from scipy.special import softmax
 from fict.utils.em import EM
 from sklearn.decomposition import PCA
@@ -89,7 +89,7 @@ class FICT_EM(EM):
         self.MNs = []
         for i in range(self.p['class_n']):
             self.Gs.append(multivariate_normal(self.p['g_mean'][i],self.p['g_cov'][i],allow_singular=True))
-            self.MNs.append(dirichlet_wrapper(self.p['mn_p'][i]))
+            self.MNs.append(continuous_multinomial(self.p['mn_p'][i]))
         self.Prior = self.p['prior']
         batch_n = gene_batch.shape[0]
         assert neighbour_batch.shape[0] == batch_n
@@ -97,6 +97,7 @@ class FICT_EM(EM):
         for i in range(self.class_n):
             lpx1z = self.Gs[i].logpdf(gene_batch)
             lpy1z = self.MNs[i].logpmf(neighbour_batch)
+            lpx1z = lpx1z / np.mean(lpx1z) * np.mean(lpy1z)
             lpz = np.log(self.Prior[i])
             posterior[i,:] = gene_factor*lpx1z + spatio_factor*lpy1z + prior_factor*lpz
         
@@ -107,7 +108,8 @@ class FICT_EM(EM):
                      decay = 0.9,
                      pseudo = 1e-5,
                      update_spatio_model = True,
-                     update_gene_model = True):
+                     update_gene_model = True,
+                     stochastic_update = False):
         """Maximization step for the EM algorithm
         Input Args:
             batch: A tuple contain (gene_batch, nieghbour_batch)
@@ -127,32 +129,40 @@ class FICT_EM(EM):
         if update_gene_model:
             mean_estimate = np.matmul(posterior,gene_batch)/post_sum
             for i in range(self.class_n):
-#                self.p['g_mean'][i] = self._rescaling_gradient(self.p['g_mean'][i], 
-#                                             mean_estimate[i],
-#                                             np.linalg.inv(self.p['g_cov'][i]),
-#                                             step_size = 1-decay)
-                self.p['g_mean'][i] = mean_estimate[i]
+                if stochastic_update:
+                    self.p['g_mean'][i] = self._rescaling_gradient(self.p['g_mean'][i], 
+                                                 mean_estimate[i],
+                                                 np.linalg.inv(self.p['g_cov'][i]),
+                                                 step_size = 1-decay)
+                else:
+                    self.p['g_mean'][i] = mean_estimate[i]
                 
             for i in range(self.class_n):
                 batch_norm = gene_batch - self.p['g_mean'][i]
                 cov = np.matmul(posterior[i]*np.transpose(batch_norm),batch_norm)
-#                self.p['g_cov'][i] = self._ema(self.p['g_cov'][i],
-#                                               cov/post_sum[i],
-#                                               decay = decay)
-                self.p['g_cov'][i] = cov/post_sum[i]
-#        new_prior = self._entropic_descent(np.reshape(self.p['prior'],(1,self.class_n)),
-#                                    np.reshape(post_sum[:,0]/batch_n,(1,self.class_n)),
-#                                    step_size = 1-decay)
-#        self.p['prior'] = np.reshape(new_prior,self.class_n)
-        self.p['prior'] = (post_sum[:,0]+1/self.class_n)/batch_n
+                if stochastic_update:
+                    self.p['g_cov'][i] = self._ema(self.p['g_cov'][i],
+                                                   cov/post_sum[i],
+                                                   decay = decay)
+                else:
+                    self.p['g_cov'][i] = cov/post_sum[i]
+        if stochastic_update:
+            new_prior = self._entropic_descent(np.reshape(self.p['prior'],(1,self.class_n)),
+                                        np.reshape(post_sum[:,0]/batch_n,(1,self.class_n)),
+                                        step_size = 1-decay)
+            self.p['prior'] = np.reshape(new_prior,self.class_n)
+        else:
+            self.p['prior'] = (post_sum[:,0]+1/self.class_n)/batch_n
         if update_spatio_model:
             temp_mn = np.matmul(posterior,neighbour_batch)
             mn_sum = np.sum(temp_mn,axis = 1,keepdims = True)
-            mn_sum = mn_sum + pseudo
-#            self.p['mn_p'] = self._entropic_descent(self.p['mn_p'],
-#                                      temp_mn/mn_sum,
-#                                      step_size = 1 - decay)
-            self.p['mn_p'] = temp_mn/mn_sum
+            mn_sum = mn_sum + pseudo*self.class_n
+            if stochastic_update:
+                self.p['mn_p'] = self._entropic_descent(self.p['mn_p'],
+                                          temp_mn/mn_sum,
+                                          step_size = 1 - decay)
+            else:
+                self.p['mn_p'] = (temp_mn+pseudo)/mn_sum
 
     def get_neighbour_count(posterior,adjacency_matrix):
         """Obtain the count of neighbourhood from the given posterior matrix and

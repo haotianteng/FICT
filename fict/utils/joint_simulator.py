@@ -13,9 +13,10 @@ import pandas as pd
 from numpy.random import uniform
 from numpy.random import choice
 from fict.utils.opt import valid_neighbourhood_frequency
+from fict.utils.data_op import KL_divergence
 from math import factorial
 from fict.utils.random_generator import multinomial_wrapper as mp
-from fict.utils.data_op import DataLoader,KL_divergence
+from fict.utils.data_op import DataLoader
 import pickle
 
 def save_simulation(sim,file):
@@ -88,6 +89,17 @@ class Simulator():
         self.gene_n = gene_n
         self.cell_n = cell_type_n
         self.seed = seed
+        self.target_freq = None
+        self.densty = None
+        self.xrange = None
+        self.coor = None
+        self.distance_matrix = None
+        self.adjacency = None
+        self._neighbourhood_frequency = None
+        self._neighbourhood_count = None
+        self.cell_type_assignment = None
+        self.all_types = None
+        self.cell_prior = None
     def gen_data_from_real(self,gene_expression,cell_type_list,neighbour_freq_prior):
         gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
         target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
@@ -119,17 +131,27 @@ class Simulator():
         self._neighbourhood_count = None
         self._neighbourhood_frequency = None
         
-    def gen_coordinate(self,density):
+    def gen_coordinate(self,density,use_knearest = False):
         """Random assign the coordinate
         Args:
-            density: How many samples in the unit circle.
+            density: How many samples in the unit circle or the k if using_knearest
+                is True.
             
         """
         self.density = density
         self.xrange = np.sqrt(np.pi*self.sample_n/self.density)
         self.coor = uniform(high = self.xrange,size = (self.sample_n,2))
         self.distance_matrix = cdist(self.coor,self.coor,'euclidean')
-        self.adjacency = self.distance_matrix<1
+        self.adjacency = np.zeros((self.sample_n,self.sample_n),dtype = bool)
+        if use_knearest:
+            for i,dist in enumerate(self.distance_matrix):
+                sort_idx = np.argsort(dist)
+                self.adjacency[i,sort_idx[:density+1]]
+            self.exclude_adjacency = self.adjacency ^ np.eye(self.sample_n).astype(bool)
+        else:
+            self.adjacency = self.distance_matrix<1
+            self.exclude_adjacency = self.adjacency ^ np.eye(self.sample_n).astype(bool)
+                
         
     @property
     def neighbour_frequency(self):
@@ -145,9 +167,15 @@ class Simulator():
     
     def assign_cell_type(self,
                          target_neighbourhood_frequency,
-                         tol = 1e-1,
+                         tol = 1e-2,
                          max_iter = 1e2,
-                         method = None):
+                         use_exist_assignment = False,
+                         method = None,
+                         soft_factor = None,
+                         annealing = False,
+                         initial_temperature = 20,
+                         half_decay = 100,
+                         local_criteria = True):
         """Generate cell type assignment iteratively from a given neighbourhood
         frequency, require the coordinates being generated first by calling
         self.gen_coordinate.
@@ -157,11 +185,18 @@ class Simulator():
                 frequency of ith cell, target_neighbourhood_frequency[i].
             tol: The error tolerance.
             max_iter: Max iteraton.
-            method: Default is 'assign-cell', can be 'assign-neighbour'
+            method: Default is 'swap', can be 'assign-neighbour'
+            annealing: Default is False. If annealing is used when the method is Metropolis-swap.
+            initial_temperature: The initial temeprature to used in the annealing algorithm.
+            half_decay: The steps of the half decay temperature.
+            local_criteria: If calculate the swap probabiltiy based on local change.
         """
-        self.cell_type_assignment = choice(np.arange(self.cell_n),
-                                size = self.sample_n,
-                                p = self.cell_prior)
+        self.target_freq = target_neighbourhood_frequency
+        self.log_target_freq = np.log(self.target_freq)
+        if not use_exist_assignment:
+            self.cell_type_assignment = choice(np.arange(self.cell_n),
+                                    size = self.sample_n,
+                                    p = self.cell_prior).astype(int)
         self._get_neighbourhood_frequency()
         error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
         print("0 iteration, error %.2f"%(error))
@@ -173,21 +208,9 @@ class Simulator():
         for i in np.arange(self.cell_n):
             mps.append(mp(target_neighbourhood_frequency[i]))
         while error>tol and iter_n<max_iter:
-            np.random.shuffle(perm)
-            for i in perm:
-                if method is None or (method == "assign-cell"):
-                    mask = np.copy(self.adjacency[i])
-                    mask[i] = False #Exclude the self count.
-                    assign_prob = self._assign_probability(i,
-                                                           self._neighbourhood_count[i],
-                                                           mask,
-                                                           mps,
-                                                           self.cell_prior)
-                    self.cell_type_assignment[i] = np.random.choice(cell_types,
-                                                                    size = 1,
-                                                                    p = assign_prob)[0]
-                    self._get_neighbourhood_frequency()
-                elif method=='assign-neighbour':
+            if method=='assign-neighbour':
+                np.random.shuffle(perm)
+                for i in perm:
                     i_type = self.cell_type_assignment[i]
                     mask = np.copy(self.adjacency[i])
                     mask[i] = False #Exclude the self count.
@@ -199,17 +222,65 @@ class Simulator():
                                                     size = neighbour_n,
                                                     p = target_neighbourhood_frequency[i_type])
                     self.cell_type_assignment[mask] = reasign_type
-
-            self._get_neighbourhood_frequency()
-            iter_n+=1
-            if iter_n%10 == 0:
+                    iter_n+=1
+            elif method is None or method=="Metropolis-swap":
+                for i in np.arange(100):
+                    swap_cluster = np.random.choice(np.arange(self.cell_n),2,replace = False)
+                    cell_idxs = np.arange(self.sample_n)
+                    label = self.cell_type_assignment
+                    i = np.random.choice(cell_idxs[label==swap_cluster[0]],1)[0]
+                    j = np.random.choice(cell_idxs[label==swap_cluster[1]],1)[0]
+                    nb_indexs = np.where(np.logical_or(self.exclude_adjacency[i] ,self.exclude_adjacency[j]))[0]
+                    dist_before = 0
+                    for k, freq in enumerate(self._neighbourhood_frequency):
+                        dist_before += KL_divergence(target_neighbourhood_frequency[k],freq)
+                    label[j],label[i] = label[i],label[j]
+                    self._get_neighbourhood_count(nb_indexs)
+                    self._get_neighbourhood_frequency(recount_neighbourhood = False)
+                    dist_after = 0
+                    for k, freq in enumerate(self._neighbourhood_frequency):
+                        dist_after += KL_divergence(target_neighbourhood_frequency[k],freq)
+                    swap_p = np.random.uniform()
+                    temperature = initial_temperature*0.5**(iter_n/half_decay)
+                    if annealing:
+                        swap = temperature*np.log(swap_p)
+                    else:
+                        swap = 0
+                    if swap>(dist_before - dist_after):
+                        #Reject the swap, so swap back.
+                        label[j],label[i] = label[i],label[j]
+                        self._get_neighbourhood_count(nb_indexs)
+                        self._get_neighbourhood_frequency(recount_neighbourhood = False)
+                    iter_n+=1
+            elif method=="Gibbs-sampling":
+                np.random.shuffle(perm)
+                ll = self._get_neighbourhood_likelihood(mps)
+                ll = np.choose(self.cell_type_assignment,ll)
+                perm = np.argsort(ll)
+                for i in perm:
+                    mask = np.copy(self.exclude_adjacency[i])
+                    assign_prob = self._assign_probability(i,
+                                                           self._neighbourhood_count[i],
+                                                           mask,
+                                                           mps,
+                                                           self.cell_prior,
+                                                           s =soft_factor)
+                    assign_cell_type = np.random.choice(cell_types,
+                                                        size = 1,
+                                                        p = assign_prob)[0]
+                    self.cell_type_assignment[i] = assign_cell_type
+                    self._get_neighbourhood_count(i=mask)
+                
+                    iter_n+=1
+            if iter_n%100 == 0:
+                self._get_neighbourhood_frequency(recount_neighbourhood = False)
                 error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
                 error_record.append(error)
                 klds = np.empty(self.cell_n)
                 for i, freq in enumerate(self._neighbourhood_frequency):
                     klds[i] = KL_divergence(target_neighbourhood_frequency[i],freq)
                 print("%d iteration, error %.2f"%(iter_n,error))
-                print("KL divergence %s"%(",".join([str(round(x,2)) for x in klds])))
+                print("KL divergence %s"%(",".join([str(round(x,3)) for x in klds])))
                 print(np.unique(self.cell_type_assignment,return_counts = True))
         return error_record
     
@@ -218,57 +289,62 @@ class Simulator():
                             neighbourhood_count,
                             neighbourhood_mask,
                             target_neighbourhood_frequency_pdf,
-                            prior):
+                            prior,
+                            s=None):
         """Calculate the posterior probability given the neighbourhood cell type.
         Args:
-            neighbourhood_count: A length N vector indicate the count of N cell 
-                types of the neighbourhood of given cell.
+            neighbourhood_count: A C vector indicate the count of the current cell.
             neighbourhood_mask: A length N boolean vector indicate the neighbourhood
                 of current cell.
-            target_neighbourhood_frequency_pdf:A length N list contain the
-                multinomial distribution of target frequency.
-            prior: A length N vector indicate the prior probability.
+            target_neighbourhood_frequency_pdf:A length C list contain the
+                multinomial distribution of target frequency of each cell type.
+            prior: A length C vector indicate the prior probability of each cell type.
+            s: Soft factor, if None, using the density.
         """
-        alpha=1
         neighbourhood_matrix = self._neighbourhood_count[neighbourhood_mask]
         neighbourhood_cell_type = self.cell_type_assignment[neighbourhood_mask]
         posterior = np.zeros(self.cell_n)
-        other_mask = np.logical_not(neighbourhood_mask)
-        other_mask[cell_index] = False
-        nb_count_other = self._neighbourhood_count[other_mask]
-        posterior_count= np.zeros((self.cell_n,self.cell_n))
-        for i in range(self.cell_n):
-#            posterior[i] = target_neighbourhood_frequency_pdf[i].logpmf(neighbourhood_count)/np.sum(neighbourhood_count)*alpha
-#            for j,count in enumerate(neighbourhood_matrix):
-#                count = np.copy(count)
-#                count[i] += 1
-#                posterior[i] += target_neighbourhood_frequency_pdf[neighbourhood_cell_type[j]].logpmf(count)/np.sum(count)*alpha
-            posterior_count[i,:] = np.sum(nb_count_other[self.cell_type_assignment[other_mask]==i],axis = 0)
-            for j,count in enumerate(neighbourhood_matrix):
-                count[i] += 1
-                posterior_count[neighbourhood_cell_type[j],:] += count
-        for i in range(self.cell_n):
-            posterior[i] = target_neighbourhood_frequency_pdf[i].logpmf(posterior_count[i])
-        assign_prob = posterior+np.log(prior)
+        current_cell_type = self.cell_type_assignment[cell_index]
+        if s is None:
+            s = self.density
+        nb_copy = neighbourhood_matrix.copy()
+        nb_copy[:,current_cell_type] -=1
+        for i in np.arange(self.cell_n):
+            posterior[i] = np.sum([self.log_target_freq[cl,i]-np.log(nb_copy[l,i]+1) 
+                                  for l,cl in enumerate(neighbourhood_cell_type)])+\
+                           np.sum([self.log_target_freq[i,j]*neighbourhood_count[j] 
+                                  for j in np.arange(self.cell_n)])
+        assign_prob = posterior/s
         assign_prob = softmax(assign_prob)
         return assign_prob
-        
-    def _get_neighbourhood_frequency(self):
+    
+    def _get_neighbourhood_likelihood(self,mn_pdf):
+        ll = np.empty((self.cell_n,self.sample_n))
+        for i in np.arange(self.cell_n):
+            ll[i,:] = mn_pdf[i].logpmf(self._neighbourhood_count)
+        return ll
+            
+    def _get_neighbourhood_frequency(self,recount_neighbourhood = True):
         """Get the neighbourhood frequency from the cell type assignment or from
         a given neighbourhood count.
         """
         if self._neighbourhood_frequency is None:
             self._neighbourhood_frequency = np.zeros((self.cell_n,self.cell_n))
-        self._get_neighbourhood_count()
+        if recount_neighbourhood:
+            self._get_neighbourhood_count()
         count = self._neighbourhood_count
         for i in range(self.cell_n):
                 self._neighbourhood_frequency[i]=np.sum(count[self.cell_type_assignment==i],axis = 0)
         self._neighbourhood_frequency = self._neighbourhood_frequency/np.sum(self._neighbourhood_frequency,axis = 1,keepdims = True)
     
-    def _get_neighbourhood_count(self):
+    def _get_neighbourhood_count(self,i = None):
         one_hot = np.zeros((self.sample_n,self.cell_n))
         one_hot[np.arange(self.sample_n),self.cell_type_assignment] = 1
-        self._neighbourhood_count = np.matmul(self.adjacency,one_hot)
+        if i is None:
+            self._neighbourhood_count = np.matmul(self.exclude_adjacency,one_hot)
+        else:
+            self._neighbourhood_count[i] = np.matmul(self.exclude_adjacency[i],one_hot)
+
     
     def gen_expression(self,
                        zeroing = True, 

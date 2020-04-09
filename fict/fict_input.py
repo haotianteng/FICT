@@ -50,15 +50,6 @@ class RealDataLoader(dop.DataLoader):
                                                 one_hot_label = True)
         self.xs = (self.gene_expression,self.nb_count)
 
-def save_loader(loader,save_f):
-    with open(save_f,'wb+') as f:
-        pickle.dump(loader,f)
-
-def load_loader(save_f):
-    with open(save_f,'rb') as f:
-        loader = pickle.load(f)
-    return loader
-
 if __name__ == "__main__":
     ### Hyper parameter setting
     print("Setting hyper parameter")
@@ -70,8 +61,8 @@ if __name__ == "__main__":
     gene_col = np.arange(9,164)
     coor_col = [5,6]
     header = 0
-#    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
-    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv"
+    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
+#    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv"
     save_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/df_"
     ### Data preprocessing
     print("Reading data from %s"%(data_f))

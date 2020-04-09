@@ -9,6 +9,7 @@ Created on Mon Mar  2 00:44:40 2020
 from scipy.stats import multinomial
 from scipy.stats import dirichlet
 import numpy as np
+from math import gamma
 
 class multinomial_wrapper(object):
     """A wrapper for the scipy multinomial distrbution allow a dynmic assigned n.
@@ -41,29 +42,25 @@ class multinomial_wrapper(object):
             f = self.pdf(n=n,p=self.p)
             results.append(f.logpmf(count))
         return np.asarray(results)
-    
-class dirichlet_wrapper(object):
-    """A wrapper for the scipy multinomial distrbution allow a dynmic assigned n.
+
+class continuous_multinomial(object):
+    """A implementation of the analytic ontinuation of multinomial distribution.
     """
     def __init__(self,p):
-        self.f = dirichlet
         self.p = p
+        self.log_p = np.log(p)
+        
+    def _func(self,x):
+        return np.log(gamma(sum(x)+1))-np.sum([np.log(gamma(xi+1)) for xi in x])+np.dot(self.log_p,x)
+    
     def pmf(self,count_batch):
         batch_shape = count_batch.shape
         if len(batch_shape) == 1:
-            return self.f.pdf(alpha=count_batch+1, x = self.p)
-        results = []
-        for count in count_batch:
-            pdf = self.f.pdf(alpha=count_batch+1, x = self.p)
-            results.append(pdf)
-        return np.asarray(results)
+            count_batch = [count_batch]
+        return np.asarray([np.exp(self._func(x)) for x in count_batch])
     
     def logpmf(self,count_batch):
         batch_shape = count_batch.shape
         if len(batch_shape) == 1:
-            return self.f.logpdf(alpha=count_batch+1, x = self.p)
-        results = []
-        for count in count_batch:
-            logpdf = self.f.logpdf(alpha=count+1, x = self.p)
-            results.append(logpdf)
-        return np.asarray(results)
+            count_batch = [count_batch]
+        return np.asarray([self._func(x) for x in count_batch])

@@ -7,11 +7,31 @@ Created on Tue Mar 17 12:57:24 2020
 """
 import numpy as np
 from sklearn.metrics.cluster import adjusted_rand_score
-from importlib import reload
 from fict.fict_model import FICT_EM
 from fict.fict_input import RealDataLoader
-from fict.fict_input import load_loader
 from time import time
+from sklearn.decomposition import PCA
+from sklearn import manifold
+from matplotlib import pyplot as plt
+
+def pca_reduce(X, dims=2):
+    """ Reduce the dimensions of X down to dims using PCA
+    X has shape (n, d)
+    Returns: The reduced X of shape (n, dims)
+    		 The fitted PCA model used to reduce X
+    """
+    print("reducing dimensions using PCA")
+    X = X - np.mean(X,axis = 0,keepdims = True)
+    X = X/np.std(X,axis = 0, keepdims = True)
+    pca = PCA(n_components = dims)
+    pca.fit(X)
+    X_reduced = pca.transform(X)
+    return X_reduced
+
+def tsne_reduce(X,dims = 5):
+    tsne = manifold.TSNE(n_components=dims, init='pca', random_state=0)
+    t_expression = tsne.fit_transform(X)
+    return t_expression
 
 def train(model,
           decay,
@@ -47,8 +67,21 @@ def train(model,
 if __name__ == "__main__":
     from fict.utils.data_op import tag2int
     from fict.utils.data_op import one_hot_vector
+    from fict.utils.data_op import load_loader
     data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/df_test"
     real_loader = load_loader(data_f)
+    nb_count = real_loader.xs[1]
+    nb_freq = nb_count
+#    nb_freq = nb_count/np.sum(nb_count,axis = 1,keepdims = True)
+    nb_freq = nb_freq - np.mean(nb_freq,axis = 0)
+    nb_reduced = manifold.TSNE().fit_transform(nb_freq)
+    y = real_loader.y
+    colors = ['Grey', 'Purple', 'Blue', 'Green', 'Orange', 'Red',
+            'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
+            'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
+    cells = np.unique(real_loader.y)
+    for i,cell in enumerate(cells):
+        plt.plot(nb_reduced[y==cell,0],nb_reduced[y==cell,1],'.')
     n_c = 10
     m2 = FICT_EM(real_loader.gene_expression.shape[1],n_c)
     renew_rounds = 10

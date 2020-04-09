@@ -45,42 +45,50 @@ def get_prior_from_data(data_f,
 def gen_simulation(sample_n,
                    gene_n,
                    cell_type_n,
+                   target_gene_mean,
+                   target_neighbourhood_frequency,
                    density = 20,
                    threshold_distance = 1,
-                   target_gene_mean = None,
                    target_gene_std = None,
-                   target_neighbourhood_frequency = None,
-                   assign_cell_type_method = 'assign-neighbour'):
-    sim = Simulator(sample_n,n_g,n_c,density)
-    sim.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
+                   assign_cell_type_method = 'Gibbs-sampling',
+                   assign_round = 100,
+                   soft_factor = None):
+    sim = Simulator(sample_n,gene_n,cell_type_n,density)
+    sim.gen_parameters(gene_mean_prior = target_gene_mean[:,:gene_n])
     sim.gen_coordinate(density = density)
-    sim.assign_cell_type(target_neighbourhood_frequency=target_freq, method = "assign-neighbour")
+    sim.assign_cell_type(target_neighbourhood_frequency=target_neighbourhood_frequency, 
+                         method = assign_cell_type_method,
+                         max_iter = assign_round,
+                         soft_factor = soft_factor)
     return sim
 
 
 if __name__=="__main__":
-    ### Hyper parameter setting
-    sample_n = 1000 #Number of samples
-    n_g = 100 #Number of genes
-    n_c = 10 #Number of cell type
-    density = 20 #The average number of neighbour for each cells.
-    threshold_distance = 1 # The threshold distance of neighbourhood.
-    gene_col = np.arange(9,164)
-    coor_col = [5,6]
-    header = 1
-    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
-    gene_mean,gene_std,target_freq,type_prior = get_prior_from_data(data_f,
-                                                                    gene_col,
-                                                                    coor_col,
-                                                                    header,
-                                                                    n_c)
+#    ### Hyper parameter setting
+#    sample_n = 1000 #Number of samples
+#    n_g = 100 #Number of genes
+#    n_c = 10 #Number of cell type
+#    density = 20 #The average number of neighbour for each cells.
+#    threshold_distance = 1 # The threshold distance of neighbourhood.
+#    gene_col = np.arange(9,164)
+#    coor_col = [5,6]
+#    header = 1
+#    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
+#    gene_mean,gene_std,target_freq,type_prior = get_prior_from_data(data_f,
+#                                                                    gene_col,
+#                                                                    coor_col,
+#                                                                    header,
+#                                                                    n_c)
     ### Generate simulation dataset and load
     sim = gen_simulation(sample_n,
                          n_g,
                          n_c,
                          target_gene_mean=gene_mean,
                          target_gene_std=gene_std,
-                         target_neighbourhood_frequency=target_freq)
+                         target_neighbourhood_frequency=target_freq,
+                         assign_cell_type_method = 'Gibbs-sampling',
+                         assign_round = 10000,
+                         soft_factor = density)
     gene_expression,cell_type,cell_neighbour = sim.gen_expression()
     df = SimDataLoader(gene_expression,
                        cell_neighbour,

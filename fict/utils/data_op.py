@@ -9,7 +9,7 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from sklearn.decomposition import PCA
 from scipy.sparse import dok_matrix
-
+import pickle
 def tag2int(label):
     tags = np.unique(label)
     label_n = len(label)
@@ -67,6 +67,18 @@ def get_adjacency(coordinate,
         adjacency_array = euclidean_distance<threshold_distance
         cols = np.where(adjacency_array)[0]
         for col in cols:
+            adjacency[i,col] = True
+    return adjacency
+
+def get_adjacency_knearest(coordinate,
+                           nearest_k):
+    sample_n = coordinate.shape[0]
+    adjacency = dok_matrix((sample_n,sample_n),bool)
+    for i in np.arange(sample_n):
+        difference = coordinate - coordinate[i]
+        euclidean_distance = np.sqrt(difference[:,0]**2+difference[:,1]**2)
+        sort_idx = np.argsort(euclidean_distance)
+        for col in sort_idx[:nearest_k+1]:
             adjacency[i,col] = True
     return adjacency
 
@@ -185,3 +197,12 @@ class DataLoader():
             x_batch,y_batch = self.read_into_memory(
                 self._perm[start:end])
         return x_batch,y_batch
+    
+def save_loader(loader,save_f):
+    with open(save_f,'wb+') as f:
+        pickle.dump(loader,f)
+
+def load_loader(save_f):
+    with open(save_f,'rb') as f:
+        loader = pickle.load(f)
+    return loader
