@@ -6,31 +6,38 @@ Created on Sun Mar  8 19:43:29 2020
 @author: heavens
 """
 import numpy as np
-from scipy.spatial.distance import cdist
 from sklearn.decomposition import PCA
 from scipy.sparse import dok_matrix
 import pickle
+from sklearn import manifold
+
 def tag2int(label):
-    tags = np.unique(label)
-    label_n = len(label)
-    int_label = np.empty(label_n,dtype = np.int)
-    for tag_idx,tag in enumerate(tags):
-        int_label[label==tag] = tag_idx
-    return int_label,tags
+    tags = list(set(label))
+    int_label = [tags.index(x) for x in label]
+    return np.asarray(int_label),tags
 
 def one_hot_vector(label):
     label_n = len(label)
     if label.dtype != np.int:
         print("Input vector has a dtype %s"%(label.dtype))
-        print("However a int type is required, transfer the data type.")
-        label = label.astype(int)
-    tags = np.unique(label)
+        print("Transfering the data type into int.")
+        _,tags = tag2int(label)
+    else:
+        tags = list(set(label))
     class_n = len(tags)
     one_hot = np.zeros((label_n,class_n))
     for tag_idx,tag in enumerate(tags):
         one_hot[label==tag,tag_idx] = 1
-    return one_hot
-    
+    return one_hot,tags
+
+def tsne_reduce(X,dims = 2):
+    tsne = manifold.TSNE(n_components=dims, 
+                         init='pca', 
+                         random_state=0,
+                         method = 'exact')
+    reduced_X = tsne.fit_transform(X)
+    return reduced_X
+
 def pca_reduce(X, dims=2):
     """ Reduce the dimensions of X down to dims using PCA
     X has shape (n, d)
@@ -58,29 +65,51 @@ def KL_divergence(prob1,prob2,pesudo=1e-6):
     return kld
 
 def get_adjacency(coordinate,
-                  threshold_distance):
+                  threshold_distance,
+                  exclude_self = False):
     sample_n = coordinate.shape[0]
     adjacency = dok_matrix((sample_n,sample_n),bool)
     for i in np.arange(sample_n):
         difference = coordinate - coordinate[i]
         euclidean_distance = np.sqrt(difference[:,0]**2+difference[:,1]**2)
         adjacency_array = euclidean_distance<threshold_distance
+        if exclude_self:
+            adjacency_array[i] = False
         cols = np.where(adjacency_array)[0]
         for col in cols:
             adjacency[i,col] = True
     return adjacency
 
 def get_adjacency_knearest(coordinate,
-                           nearest_k):
+                           nearest_k,
+                           exclude_self = False):
     sample_n = coordinate.shape[0]
     adjacency = dok_matrix((sample_n,sample_n),bool)
+    if exclude_self:
+        nearest_k +=1
     for i in np.arange(sample_n):
         difference = coordinate - coordinate[i]
         euclidean_distance = np.sqrt(difference[:,0]**2+difference[:,1]**2)
         sort_idx = np.argsort(euclidean_distance)
-        for col in sort_idx[:nearest_k+1]:
+        for col in sort_idx[:nearest_k]:
             adjacency[i,col] = True
+        if exclude_self:
+            adjacency[i,i] = False
     return adjacency
+
+def get_knearest_distance(coordinate,
+                          nearest_k,
+                          exclude_self = False):
+    sample_n = coordinate.shape[0]
+    if exclude_self:
+        nearest_k +=1
+    distance_list = []
+    for i in np.arange(sample_n):
+        difference = coordinate - coordinate[i]
+        euclidean_distance = np.sqrt(difference[:,0]**2+difference[:,1]**2)
+        sort_distance = np.sort(euclidean_distance)
+        distance_list.append(sort_distance[nearest_k])
+    return distance_list    
 
 def get_neighbourhood_count(adjacency, 
                             label,

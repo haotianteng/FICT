@@ -13,6 +13,7 @@ from scipy.special import softmax
 from fict.utils.em import EM
 from sklearn.decomposition import PCA
 from sklearn import manifold
+from sklearn.cluster import KMeans
 from time import time
 
 def pca_reduce(X, dims=2):
@@ -47,7 +48,8 @@ def tsne_reduce(X,dims = 5):
 class FICT_EM(EM):
     def __init__(self,
                  gene_n,
-                 class_n):
+                 class_n,
+                 dirichlet_alpha = None):
         g_mean = np.random.rand(class_n,gene_n)
         tol = 1e-7
         g_cov = []
@@ -68,12 +70,15 @@ class FICT_EM(EM):
         mn_p = mn_p/np.sum(mn_p,axis = 1,keepdims = True)
         temp = np.random.rand(class_n)
         prior = temp/sum(temp)
+        if dirichlet_alpha is None:
+            dirichlet_alpha = [1/class_n] * class_n
         EM.__init__(self,parameter = {'gene_n':gene_n,
                      'class_n':class_n,
                      'g_mean':g_mean,
                      'g_cov':g_cov,
                      'mn_p':mn_p,
-                     'prior':prior})
+                     'prior':prior,
+                     'concentration':dirichlet_alpha})
         
     @property
     def class_n(self):
@@ -82,8 +87,36 @@ class FICT_EM(EM):
     @property
     def gene_n(self):
         return self.p['gene_n']
-            
-    def expectation(self,batch,spatio_factor = 0.2,gene_factor=1.0,prior_factor = 1.0):
+    
+    def gaussain_initialize(self,batch,method= 'k-means++'):
+        """Initializte the parameter with batch of data.
+        Args:
+            batch: The batch of data that contain the expression matrix.
+            method: Initialization method to used, default is kmeans++ of scipy.
+        """
+        km = KMeans(n_clusters=self.class_n,
+                    init = method)
+        km.fit(batch)   
+        means = km.cluster_centers_
+        label = km.labels_
+        self.p['g_mean'] = means
+        for i in np.arange(self.class_n):
+            mask = label==i
+            if np.sum(mask) <= 1:
+                print("Warning %d class has no cell in initialized KNN,\
+                      reduce the number of classes, initial covariance matrix\
+                      with identity matrix.")
+                self.p['g_cov'][i] = np.eye(self.gene_n)
+            else:
+                self.p['g_cov'][i] = np.cov(batch[mask].T)
+    
+    def expectation(self,
+                    batch,
+                    spatio_factor = 0.2,
+                    gene_factor=1.0,
+                    prior_factor = 1.0,
+                    equal_contrib = False,
+                    pseudo = 1e-9):
         gene_batch,neighbour_batch = batch
         self.Gs = []
         self.MNs = []
@@ -94,19 +127,29 @@ class FICT_EM(EM):
         batch_n = gene_batch.shape[0]
         assert neighbour_batch.shape[0] == batch_n
         posterior = np.zeros((self.class_n,batch_n))
+        posterior_g = np.zeros((self.class_n,batch_n))
+        posterior_mn = np.zeros((self.class_n,batch_n))
+        posterior_p = np.zeros((self.class_n,batch_n))
         for i in range(self.class_n):
-            lpx1z = self.Gs[i].logpdf(gene_batch)
-            lpy1z = self.MNs[i].logpmf(neighbour_batch)
-            lpx1z = lpx1z / np.mean(lpx1z) * np.mean(lpy1z)
-            lpz = np.log(self.Prior[i])
-            posterior[i,:] = gene_factor*lpx1z + spatio_factor*lpy1z + prior_factor*lpz
-        
-        return softmax(posterior,axis = 0)
+            posterior_g[i,:] = self.Gs[i].logpdf(gene_batch)
+            posterior_mn[i,:] = self.MNs[i].logpmf(neighbour_batch)
+            posterior_p[i,:] = np.log(self.Prior[i])
+        if equal_contrib:
+            posterior_mn = posterior_mn
+            posterior_g = posterior_g/np.mean(posterior_g)*np.mean(posterior_mn)
+        posterior_p = posterior_p
+        posterior = gene_factor*posterior_g +\
+                    spatio_factor*posterior_mn+\
+                    prior_factor*posterior_p
+        ll = np.mean(np.log(np.sum(np.exp(posterior),axis = 1)+pseudo))
+        posterior = posterior - np.min(posterior,axis = 0)
+        return softmax(posterior,axis = 0)+pseudo,ll,(posterior_g,posterior_mn,posterior_p)
     
     def maximization(self,
-                     batch,posterior,
+                     batch,
+                     posterior,
                      decay = 0.9,
-                     pseudo = 1e-5,
+                     pseudo = 1e-9,
                      update_spatio_model = True,
                      update_gene_model = True,
                      stochastic_update = False):
@@ -125,10 +168,16 @@ class FICT_EM(EM):
         batch_n = gene_batch.shape[0]
         assert neighbour_batch.shape[0] == batch_n
         post_sum = np.sum(posterior,axis = 1,keepdims = True)
-        post_sum = post_sum + pseudo
+        zero_sum = []
+        for i,s in enumerate(post_sum):
+            if s==0:
+                zero_sum.append(i)
+                post_sum = post_sum + pseudo
         if update_gene_model:
             mean_estimate = np.matmul(posterior,gene_batch)/post_sum
             for i in range(self.class_n):
+                if i in zero_sum:
+                    continue
                 if stochastic_update:
                     self.p['g_mean'][i] = self._rescaling_gradient(self.p['g_mean'][i], 
                                                  mean_estimate[i],
@@ -138,6 +187,8 @@ class FICT_EM(EM):
                     self.p['g_mean'][i] = mean_estimate[i]
                 
             for i in range(self.class_n):
+                if i in zero_sum:
+                    continue
                 batch_norm = gene_batch - self.p['g_mean'][i]
                 cov = np.matmul(posterior[i]*np.transpose(batch_norm),batch_norm)
                 if stochastic_update:
@@ -152,7 +203,7 @@ class FICT_EM(EM):
                                         step_size = 1-decay)
             self.p['prior'] = np.reshape(new_prior,self.class_n)
         else:
-            self.p['prior'] = (post_sum[:,0]+1/self.class_n)/batch_n
+            self.p['prior'] = (post_sum[:,0]+1)/(batch_n+3)
         if update_spatio_model:
             temp_mn = np.matmul(posterior,neighbour_batch)
             mn_sum = np.sum(temp_mn,axis = 1,keepdims = True)

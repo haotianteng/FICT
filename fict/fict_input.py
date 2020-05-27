@@ -8,7 +8,6 @@ Created on Thu Feb  6 17:47:51 2020
 import numpy as np
 import pandas as pd
 from fict.utils import data_op as dop
-import pickle 
 
 class RealDataLoader(dop.DataLoader):
     """Data loader for the real FISH data.
@@ -19,36 +18,60 @@ class RealDataLoader(dop.DataLoader):
             the 2D plane, N is the number of samples.
         threshold_distance: A float indicate the thershold distance of two cells
             being considered as neighbour.
-        cell_type_probability: A N-by-K matrix indicate the probability of type
-            for each cell, N is the number of samples(cells), K is the number of
-            possible cell types.
+        num_class:The number of class.
         cell_labels: A N-by-1 matrix indicate the true label of cell types.
     """
     def __init__(self,
                  gene_expression,
                  cell_coordinate,
                  threshold_distance,
-                 cell_type_probability,
+                 num_class,
+                 field = None,
                  cell_labels = None,
                  for_eval = False):
         self.gene_expression = gene_expression
+        self.sample_n = gene_expression.shape[0]
+        self.class_n = num_class
         self.coordinate = cell_coordinate
+        self.field = field
         self.adjacency = dop.get_adjacency(self.coordinate,threshold_distance)
+        self.exclude_adjacency = dop.get_adjacency(self.coordinate,threshold_distance,exclude_self = True)
         self.for_eval = for_eval
         self.cell_labels = cell_labels
-        self.renew_neighbourhood(cell_type_probability)
+        self.nb_count = np.empty((self.sample_n,self.class_n))
         super().__init__(xs = (self.gene_expression,self.nb_count),
                        y = self.cell_labels,
                        for_eval = self.for_eval)
         
-    def renew_neighbourhood(self,type_prob,threshold_distance = None,exclude_self= False):
+    def renew_neighbourhood(self,
+                            type_prob,
+                            threshold_distance = None,
+                            nearest_k = None,
+                            exclude_self= False):
+        if (nearest_k is None) and (threshold_distance is None):
+            raise TypeError("renew_neighbourhood require at least input one of\
+                            the following arguments:threshold_distance, nearest_k")
         if threshold_distance is not None:
-            self.adjacency = dop.get_adjacency(self.coordinate,threshold_distance)
+            self.adjacency = dop.get_adjacency(self.coordinate,
+                                               threshold_distance,
+                                               exclude_self = exclude_self)
+        elif nearest_k is not None:
+            self.adjacency = dop.get_adjacency_knearest(self.coordinate,
+                                              nearest_k,
+                                              exclude_self = exclude_self)
         self.nb_count = dop.get_neighbourhood_count(self.adjacency,
-                                                type_prob,
-                                                exclude_self = exclude_self,
-                                                one_hot_label = True)
-        self.xs = (self.gene_expression,self.nb_count)
+                                                    type_prob,
+                                                    exclude_self = exclude_self,
+                                                    one_hot_label = True)
+        self.xs = (self.xs[0],self.nb_count)
+    
+    def dim_reduce(self,dims = 10,method = "PCA"):
+        if method == "PCA":
+            self.reduced_gene_expression = dop.pca_reduce(self.gene_expression,dims = dims)
+            self.xs = (self.reduced_gene_expression,self.nb_count)    
+        elif method == "TSNE":
+            self.reduced_gene_expression = dop.tsne_reduce(self.gene_expression,dims = dims)
+            self.xs = (self.reduced_gene_expression,self.nb_count) 
 
 if __name__ == "__main__":
     ### Hyper parameter setting
@@ -61,9 +84,8 @@ if __name__ == "__main__":
     gene_col = np.arange(9,164)
     coor_col = [5,6]
     header = 0
-    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
-#    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv"
-    save_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/df_"
+    data_f = "/home/heavens/CMU/FISH_Clustering/MERFISH2018/Moffitt_and_Bambah-Mukku_et_al_merfish_all_cells.csv"
+    save_f = "/home/heavens/CMU/FISH_Clustering/MERFISH_data/df_"
     ### Data preprocessing
     print("Reading data from %s"%(data_f))
     if data_f.endswith('.xlsx'):
@@ -81,29 +103,18 @@ if __name__ == "__main__":
         cell_types = data['Cell_class']
         data = data[cell_types!= 'Ambiguous']
         cell_types = data['Cell_class']
+        bregma = data['Bregma']
         gene_expression = data.iloc[:,gene_col]
         type_tags = np.unique(cell_types)
         coordinates = data.iloc[:,coor_col]
         coordinates = np.asarray(coordinates)
-        ### Choose only the n_c type cells
-#        print("Choose the subdataset of %d cell types"%(n_c))
-#        if len(type_tags)<n_c:
-#            raise ValueError("Only %d cell types presented in the dataset, but require %d, reduce the number of cell type assigned."%(len(type_tags),n_c))
-#        mask = np.asarray([False]*len(cell_types))
-#        for tag in type_tags[:n_c]:
-#            mask = np.logical_or(mask,cell_types==tag)
-#        gene_expression = gene_expression[mask]
-#        cell_types = np.asarray(cell_types[mask])
-#        coordinates = np.asarray(coordinates[mask])
         gene_expression = np.asarray(gene_expression)
         gene_expression = gene_expression/np.sum(gene_expression,axis = 1,keepdims = True)
-        #gene_expression_reduced = tsne_reduce(gene_expression,dims = 2)
-        gene_expression_reduced = dop.pca_reduce(gene_expression,dims = n_g)
-        init_prob = np.ones((gene_expression_reduced.shape[0],n_c))*1.0/n_c
-        real_df = RealDataLoader(gene_expression_reduced,
+        real_df = RealDataLoader(gene_expression,
                                  coordinates,
                                  threshold_distance = threshold_distance,
-                                 cell_type_probability = init_prob,
                                  cell_labels = cell_types,
+                                 num_class = n_c,
+                                 field = bregma,
                                  for_eval = False)
-        save_loader(real_df,save_f+str(animal_id))
+        dop.save_loader(real_df,save_f+str(animal_id))
