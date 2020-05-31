@@ -16,7 +16,7 @@ def tag2int(label):
     int_label = [tags.index(x) for x in label]
     return np.asarray(int_label),tags
 
-def one_hot_vector(label):
+def one_hot_vector(label,class_n = None):
     label_n = len(label)
     if label.dtype != np.int:
         print("Input vector has a dtype %s"%(label.dtype))
@@ -24,21 +24,22 @@ def one_hot_vector(label):
         _,tags = tag2int(label)
     else:
         tags = list(set(label))
-    class_n = len(tags)
+    if class_n is None:
+        class_n = len(tags)
     one_hot = np.zeros((label_n,class_n))
     for tag_idx,tag in enumerate(tags):
         one_hot[label==tag,tag_idx] = 1
     return one_hot,tags
 
-def tsne_reduce(X,dims = 2):
+def tsne_reduce(X,dims = 2,method = "exact"):
     tsne = manifold.TSNE(n_components=dims, 
                          init='pca', 
                          random_state=0,
-                         method = 'exact')
+                         method = method)
     reduced_X = tsne.fit_transform(X)
     return reduced_X
 
-def pca_reduce(X, dims=2):
+def pca_reduce(X, dims=2,pca = None):
     """ Reduce the dimensions of X down to dims using PCA
     X has shape (n, d)
     Returns: The reduced X of shape (n, dims)
@@ -47,10 +48,11 @@ def pca_reduce(X, dims=2):
     print("reducing dimensions using PCA")
     X = X - np.mean(X,axis = 0,keepdims = True)
     X = X/np.std(X,axis = 0, keepdims = True)
-    pca = PCA(n_components = dims)
-    pca.fit(X)
+    if pca is None:
+        pca = PCA(n_components = dims)
+        pca.fit(X)
     X_reduced = pca.transform(X)
-    return X_reduced
+    return X_reduced,pca
 
 def KL_divergence(prob1,prob2,pesudo=1e-6):
     if 0 in prob1:
@@ -144,7 +146,7 @@ class DataLoader():
                  xs,
                  y = None,
                  for_eval = False):
-        """Class for loading the data.
+        """Base class for loading the data.
         Input Args:
             xs: The input data, can be a tuple of arrays with the same length in
                 0 dimension.

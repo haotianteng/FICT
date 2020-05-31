@@ -80,7 +80,8 @@ def train(model,
           renew_neighbourhood = 10,
           report_per_rounds = 10,
           renew_per_rounds = 10,
-          nearest_k = 20):
+          nearest_k = 20,
+          partial_update = 1):
     accur_record = []
     log_likelihood = []
     if verbose>1:
@@ -109,7 +110,8 @@ def train(model,
                                                      gene_factor = gene_factor,
                                                      prior_factor = prior_factor)
                 data_loader.renew_neighbourhood(np.transpose(posterior_all),
-                                                nearest_k = nearest_k)
+                                                nearest_k = nearest_k,
+                                                partial_update = partial_update)
         if i%report_per_rounds == 0:
             if verbose>1:
                 fig,axs = plt.subplots()
@@ -128,24 +130,30 @@ def train(model,
 
 def alternative_train(data_loader,
                       model,
-                      gene_round,
-                      spatial_round,
-                      both_round,
-                      batch_size,
-                      threshold_distance):
+                      train_config):
     """The training pipeline for alternatively training spatial aware model.
     Args:
         data_loader: The data loader of the gene expression and negibhourhood
             frequency.
         model: The FICT_EM model class.
-        gene_round: Rounds for training gene model.
-        spatial_round: Rounds for training the spatial model.
-        both_round: Rounds for training both models.
-        threshold_distance: The threshold neighbourhood distance.
+        train_config: The config file of the training parameters.
     """
     print("Initialize the gaussian model with kmeans++")
     model.gaussain_initialize(data_loader.xs[0])
     print("Begin training using gene expression only.")
+    gene_round = train_config['gene_round']
+    spatial_round = train_config['spatio_round']
+    both_round = train_config['both_round']
+    threshold_distance = train_config['spatio_phase']['threshold_distance']
+    nearest_k = train_config['spatio_phase']['nearest_k']
+    batch_size = train_config['batch_size']
+    gene_factor_g = train_config['gene_phase']['gene_factor']
+    spatio_factor_g = train_config['gene_phase']['spatio_factor']
+    prior_factor_g = train_config['gene_phase']['prior_factor']
+    gene_factor_s = train_config['spatio_phase']['gene_factor']
+    spatio_factor_s = train_config['spatio_phase']['spatio_factor']
+    prior_factor_s = train_config['spatio_phase']['prior_factor']
+    partial_update = train_config['spatio_phase']['partial_update']
     accur_record_gene = train(model,
           0.5,
           gene_round,
@@ -154,12 +162,13 @@ def alternative_train(data_loader,
           update_gene = True,
           update_spatio = False,
           renew_neighbourhood = 0,
-          spatio_factor = 0,
-          prior_factor = 1,
-          gene_factor = 1,
+          spatio_factor = spatio_factor_g,
+          prior_factor = prior_factor_g,
+          gene_factor = gene_factor_g,
           report_per_rounds=1,
           verbose = 1,
-          stochastic_update = False)
+          stochastic_update = False,
+          nearest_k = nearest_k)
     print("Train the spatio model while hold the gene model.")
     predict_gene,ll,_ = model.expectation(data_loader.xs,
                                   spatio_factor=0,
@@ -167,6 +176,7 @@ def alternative_train(data_loader,
                                   prior_factor = 0)
     data_loader.renew_neighbourhood(predict_gene.transpose(),
                                     threshold_distance = threshold_distance,
+                                    nearest_k = nearest_k,
                                     exclude_self = True)
     ### Train the spatial model alone
     accur_record_spatio = train(model,
@@ -174,29 +184,32 @@ def alternative_train(data_loader,
           spatial_round,
           data_loader,
           batch_size,
-          spatio_factor = 0.0,
-          gene_factor = 1.0,
-          prior_factor = 1.0,
+          spatio_factor = spatio_factor_g,
+          gene_factor = gene_factor_g,
+          prior_factor = prior_factor_g,
           update_spatio = True,
           update_gene = False,
           report_per_rounds=1,
-          renew_per_rounds = 1, #No neighbourhood frequency renew during training.
-          renew_neighbourhood = 1,
-          verbose = 1)
+          renew_per_rounds = 1, 
+          renew_neighbourhood = 0,#No neighbourhood frequency renew during training.
+          verbose = 1,
+          nearest_k = nearest_k)
     accur_record_both = train(model,
           0.5,
-          spatial_round,
+          both_round,
           data_loader,
           batch_size,
-          spatio_factor = 1.0,
-          gene_factor = 1.0,
-          prior_factor = 1.0,
+          spatio_factor = spatio_factor_s,
+          gene_factor = gene_factor_s,
+          prior_factor = prior_factor_s,
           update_spatio = True,
           update_gene = False,
           report_per_rounds=1,
           renew_per_rounds = 1, #No neighbourhood frequency renew during training.
           renew_neighbourhood = 10,
-          verbose = 1)
+          verbose = 1,
+          nearest_k = nearest_k,
+          partial_update = partial_update)
     return model,(accur_record_gene,accur_record_spatio,accur_record_both)
 
 if __name__ == "__main__":

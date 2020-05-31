@@ -38,7 +38,9 @@ class RealDataLoader(dop.DataLoader):
         self.exclude_adjacency = dop.get_adjacency(self.coordinate,threshold_distance,exclude_self = True)
         self.for_eval = for_eval
         self.cell_labels = cell_labels
+        self.type_prob = None
         self.nb_count = np.empty((self.sample_n,self.class_n))
+        self.pca_components = None
         super().__init__(xs = (self.gene_expression,self.nb_count),
                        y = self.cell_labels,
                        for_eval = self.for_eval)
@@ -47,7 +49,9 @@ class RealDataLoader(dop.DataLoader):
                             type_prob,
                             threshold_distance = None,
                             nearest_k = None,
-                            exclude_self= False):
+                            exclude_self= False,
+                            partial_update = 1,
+                            hard_update = False):
         if (nearest_k is None) and (threshold_distance is None):
             raise TypeError("renew_neighbourhood require at least input one of\
                             the following arguments:threshold_distance, nearest_k")
@@ -59,15 +63,26 @@ class RealDataLoader(dop.DataLoader):
             self.adjacency = dop.get_adjacency_knearest(self.coordinate,
                                               nearest_k,
                                               exclude_self = exclude_self)
+        if hard_update:
+            predict = np.argmax(type_prob,axis = 1)
+            type_prob = dop.one_hot_vector(predict,class_n = self.class_n)[0]
+        if self.type_prob is None:
+            self.type_prob = type_prob
+            if partial_update<1:
+                print("Warning, initial type probability is None, update partition is forced to 1.")
+        else:
+            choice_n = int(self.sample_n*partial_update)
+            choice_idx = np.random.choice(self.sample_n,choice_n,replace = False)
+            self.type_prob[choice_idx] = type_prob[choice_idx]
         self.nb_count = dop.get_neighbourhood_count(self.adjacency,
-                                                    type_prob,
+                                                    self.type_prob,
                                                     exclude_self = exclude_self,
                                                     one_hot_label = True)
         self.xs = (self.xs[0],self.nb_count)
-    
+        
     def dim_reduce(self,dims = 10,method = "PCA"):
         if method == "PCA":
-            self.reduced_gene_expression = dop.pca_reduce(self.gene_expression,dims = dims)
+            self.reduced_gene_expression,self.pca_components = dop.pca_reduce(self.gene_expression,dims = dims)
             self.xs = (self.reduced_gene_expression,self.nb_count)    
         elif method == "TSNE":
             self.reduced_gene_expression = dop.tsne_reduce(self.gene_expression,dims = dims)
