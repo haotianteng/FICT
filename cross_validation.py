@@ -34,6 +34,7 @@ TRAIN_CONFIG['spatio_phase'] = {'gene_factor':1.0,
                                 'prior_factor':0.0,
                                 'nearest_k':20,
                                 'threshold_distance':None,
+                                'renew_round':20,
                                 'partial_update':0.1}
 
 def load_train(data_loader,num_class = None):
@@ -145,7 +146,7 @@ if __name__ == "__main__":
         models = pickle.load(f)
     ###
     n=5
-    renew_round = 10
+    renew_round = 20
     cv_gene = np.zeros((n,n))
     cv_spatio = np.zeros((n,n))
     e_gene = np.empty((n,n,2),dtype = np.object)

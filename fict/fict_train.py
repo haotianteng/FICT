@@ -153,6 +153,7 @@ def alternative_train(data_loader,
     gene_factor_s = train_config['spatio_phase']['gene_factor']
     spatio_factor_s = train_config['spatio_phase']['spatio_factor']
     prior_factor_s = train_config['spatio_phase']['prior_factor']
+    renew_round = train_config['spatio_phase']['renew_round']
     partial_update = train_config['spatio_phase']['partial_update']
     accur_record_gene = train(model,
           0.5,
@@ -206,7 +207,7 @@ def alternative_train(data_loader,
           update_gene = False,
           report_per_rounds=1,
           renew_per_rounds = 1, #No neighbourhood frequency renew during training.
-          renew_neighbourhood = 10,
+          renew_neighbourhood = renew_round,
           verbose = 1,
           nearest_k = nearest_k,
           partial_update = partial_update)
