@@ -104,14 +104,20 @@ def train(model,
         accur_record.append(accuracy)
         log_likelihood.append(ll)
         if i%renew_per_rounds == 0 and renew_neighbourhood:
-            for _ in np.arange(renew_neighbourhood):
-                posterior_all,_,_ = model.expectation(data_loader.xs,
+            for renew_i in np.arange(renew_neighbourhood):
+                posterior_all,ll_renew,_ = model.expectation(data_loader.xs,
                                                      spatio_factor = spatio_factor,
                                                      gene_factor = gene_factor,
                                                      prior_factor = prior_factor)
                 data_loader.renew_neighbourhood(np.transpose(posterior_all),
                                                 nearest_k = nearest_k,
                                                 partial_update = partial_update)
+                if verbose>0:
+                    if renew_i==0:
+                        print("\tRenew neighbourhood %d, likelihood change:%f"%(renew_i,ll_renew-ll))
+                        ll_b = ll_renew
+                    else:
+                        print("\tRenew neighbourhood %d, likelihood change:%f"%(renew_i,ll_renew-ll_b))
         if i%report_per_rounds == 0:
             if verbose>1:
                 fig,axs = plt.subplots()
@@ -153,6 +159,7 @@ def alternative_train(data_loader,
     gene_factor_s = train_config['spatio_phase']['gene_factor']
     spatio_factor_s = train_config['spatio_phase']['spatio_factor']
     prior_factor_s = train_config['spatio_phase']['prior_factor']
+    renew_rounds = train_config['spatio_phase']['renew_rounds']
     partial_update = train_config['spatio_phase']['partial_update']
     accur_record_gene = train(model,
           0.5,
@@ -203,10 +210,10 @@ def alternative_train(data_loader,
           gene_factor = gene_factor_s,
           prior_factor = prior_factor_s,
           update_spatio = True,
-          update_gene = False,
+          update_gene = True,
           report_per_rounds=1,
           renew_per_rounds = 1, #No neighbourhood frequency renew during training.
-          renew_neighbourhood = 10,
+          renew_neighbourhood = renew_rounds,
           verbose = 1,
           nearest_k = nearest_k,
           partial_update = partial_update)
