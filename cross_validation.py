@@ -275,8 +275,8 @@ def run(args):
         pickle.dump([e_gene,e_spatio,cv_gene,cv_spatio],f)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog='chiron',
-                                     description='A deep neural network basecaller.')
+    parser = argparse.ArgumentParser(prog='FICT',
+                                     description='A cell type clsuter for FISH data.')
     parser.add_argument('-i', '--input', required = True,
                         help="The input data loader pickle file.")
     parser.add_argument('-o','--output', required = True,
