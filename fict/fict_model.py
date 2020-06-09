@@ -135,8 +135,8 @@ class FICT_EM(EM):
             posterior_mn[i,:] = self.MNs[i].logpmf(neighbour_batch)
             posterior_p[i,:] = np.log(self.Prior[i])
         if equal_contrib:
-            posterior_mn = posterior_mn
-            posterior_g = posterior_g/np.mean(posterior_g)*np.mean(posterior_mn)
+            posterior_mn = posterior_mn*np.mean(posterior_g)/np.mean(posterior_mn)
+            posterior_g = posterior_g
         posterior_p = posterior_p
         posterior = gene_factor*posterior_g +\
                     spatio_factor*posterior_mn+\
