@@ -80,10 +80,16 @@ def train(model,
           renew_neighbourhood = 10,
           report_per_rounds = 10,
           renew_per_rounds = 10,
-          nearest_k = 20,
-          partial_update = 1):
+          nearest_k = None,
+          threshold_distance = None,
+          partial_update = 1,
+          equal_contrib = False):
     accur_record = []
     log_likelihood = []
+    if nearest_k is None and threshold_distance is None:
+        raise ValueError("nearest_k and threshold_distance can't be both None.")
+    if nearest_k is not None and threshold_distance is not None:
+        raise ValueError("nearest_k and threshold_distance can't be assigned at the same time.")
     if verbose>1:
         fig,axs = plt.subplots()
         centroid_ellipse(data_loader.xs,data_loader.y,model,axs)
@@ -93,7 +99,8 @@ def train(model,
         posterior,ll,_ = model.expectation(x_batch,
                                    spatio_factor = spatio_factor,
                                    gene_factor = gene_factor,
-                                   prior_factor = prior_factor)
+                                   prior_factor = prior_factor,
+                                   equal_contrib = equal_contrib)
         model.maximization(x_batch,posterior,
                            decay = decay,
                            update_gene_model = update_gene,
@@ -104,14 +111,21 @@ def train(model,
         accur_record.append(accuracy)
         log_likelihood.append(ll)
         if i%renew_per_rounds == 0 and renew_neighbourhood:
-            for _ in np.arange(renew_neighbourhood):
-                posterior_all,_,_ = model.expectation(data_loader.xs,
+            for renew_i in np.arange(renew_neighbourhood):
+                posterior_all,ll_renew,_ = model.expectation(data_loader.xs,
                                                      spatio_factor = spatio_factor,
                                                      gene_factor = gene_factor,
                                                      prior_factor = prior_factor)
                 data_loader.renew_neighbourhood(np.transpose(posterior_all),
                                                 nearest_k = nearest_k,
+                                                threshold_distance = threshold_distance,
                                                 partial_update = partial_update)
+                if verbose>0:
+                    if renew_i==0:
+                        print("\tRenew neighbourhood %d, likelihood change:%f"%(renew_i,ll_renew-ll))
+                        ll_b = ll_renew
+                    else:
+                        print("\tRenew neighbourhood %d, likelihood change:%f"%(renew_i,ll_renew-ll_b))
         if i%report_per_rounds == 0:
             if verbose>1:
                 fig,axs = plt.subplots()
@@ -153,7 +167,7 @@ def alternative_train(data_loader,
     gene_factor_s = train_config['spatio_phase']['gene_factor']
     spatio_factor_s = train_config['spatio_phase']['spatio_factor']
     prior_factor_s = train_config['spatio_phase']['prior_factor']
-    renew_round = train_config['spatio_phase']['renew_round']
+    renew_rounds = train_config['spatio_phase']['renew_rounds']
     partial_update = train_config['spatio_phase']['partial_update']
     accur_record_gene = train(model,
           0.5,
@@ -179,7 +193,7 @@ def alternative_train(data_loader,
                                     threshold_distance = threshold_distance,
                                     nearest_k = nearest_k,
                                     exclude_self = True)
-    ### Train the spatial model alone
+    ### Initial spatio model with gene model.
     accur_record_spatio = train(model,
           0.5,
           spatial_round,
@@ -194,7 +208,10 @@ def alternative_train(data_loader,
           renew_per_rounds = 1, 
           renew_neighbourhood = 0,#No neighbourhood frequency renew during training.
           verbose = 1,
-          nearest_k = nearest_k)
+          nearest_k = nearest_k,
+          threshold_distance = threshold_distance)
+    
+    ### Train the saptio+gene model.
     accur_record_both = train(model,
           0.5,
           both_round,
@@ -204,13 +221,15 @@ def alternative_train(data_loader,
           gene_factor = gene_factor_s,
           prior_factor = prior_factor_s,
           update_spatio = True,
-          update_gene = False,
+          update_gene = True,
           report_per_rounds=1,
           renew_per_rounds = 1, #No neighbourhood frequency renew during training.
-          renew_neighbourhood = renew_round,
+          renew_neighbourhood = renew_rounds,
           verbose = 1,
           nearest_k = nearest_k,
-          partial_update = partial_update)
+          threshold_distance = threshold_distance,
+          partial_update = partial_update,
+          equal_contrib = True)
     return model,(accur_record_gene,accur_record_spatio,accur_record_both)
 
 if __name__ == "__main__":

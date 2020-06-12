@@ -135,8 +135,8 @@ class FICT_EM(EM):
             posterior_mn[i,:] = self.MNs[i].logpmf(neighbour_batch)
             posterior_p[i,:] = np.log(self.Prior[i])
         if equal_contrib:
-            posterior_mn = posterior_mn
-            posterior_g = posterior_g/np.mean(posterior_g)*np.mean(posterior_mn)
+            posterior_mn = posterior_mn*np.mean(posterior_g)/np.mean(posterior_mn)
+            posterior_g = posterior_g
         posterior_p = posterior_p
         posterior = gene_factor*posterior_g +\
                     spatio_factor*posterior_mn+\
@@ -150,6 +150,7 @@ class FICT_EM(EM):
                      posterior,
                      decay = 0.9,
                      pseudo = 1e-9,
+                     gene_factor = 1.0,
                      update_spatio_model = True,
                      update_gene_model = True,
                      stochastic_update = False):
@@ -193,10 +194,10 @@ class FICT_EM(EM):
                 cov = np.matmul(posterior[i]*np.transpose(batch_norm),batch_norm)
                 if stochastic_update:
                     self.p['g_cov'][i] = self._ema(self.p['g_cov'][i],
-                                                   cov/post_sum[i],
+                                                   gene_factor*cov/post_sum[i],
                                                    decay = decay)
                 else:
-                    self.p['g_cov'][i] = cov/post_sum[i]
+                    self.p['g_cov'][i] = gene_factor*cov/post_sum[i]
         if stochastic_update:
             new_prior = self._entropic_descent(np.reshape(self.p['prior'],(1,self.class_n)),
                                         np.reshape(post_sum[:,0]/batch_n,(1,self.class_n)),
