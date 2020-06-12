@@ -39,8 +39,13 @@ TRAIN_CONFIG['spatio_phase'] = {'gene_factor':1.0,
                                 'prior_factor':0.0,
                                 'nearest_k':10,
                                 'threshold_distance':None,
-                                'renew_rounds':20,
+                                'renew_rounds':30,
                                 'partial_update':0.1}
+
+def load_pickle(f):
+    with open(f,'rb') as x:
+        obj = pickle.load(x)
+    return(obj)
 
 def load_train(data_loader,num_class = None):
     int_y,tags = tag2int(data_loader.y)
@@ -133,11 +138,26 @@ def run(args):
     n_class = args.n_class
     reduced_dim = args.reduced_dim
     k_nearest = args.k_nearest
+    thres_dist = args.threshold_distance
+    renew_round = args.renew_round
+    if (k_nearest is None) and (thres_dist is None):
+        print("Either nearest_k or threshold_distance is not provided,"+\
+              "default nearest_k is used %d."%(TRAIN_CONFIG['spatio_phase']['nearest_k']))
+        k_nearest = TRAIN_CONFIG['spatio_phase']['nearest_k']
+        pass
+    elif (k_nearest is not None) and (thres_dist is not None):
+        print("Warning, both nearest_k and threshold_distance are provided,"+
+              "nearest_k argument will not be used.")
+        TRAIN_CONFIG['spatio_phase']['nearest_k'] = None
+        TRAIN_CONFIG['spatio_phase']['threshold_distance'] = thres_dist
+    else:
+        TRAIN_CONFIG['spatio_phase']['nearest_k'] = k_nearest
+        TRAIN_CONFIG['spatio_phase']['threshold_distance'] = thres_dist
     n=args.k_fold
-    TRAIN_CONFIG['spatio_phase']['nearest_k'] = k_nearest
     TRAIN_CONFIG['n_class'] = n_class
     TRAIN_CONFIG['reduced_dim'] = reduced_dim
     TRAIN_CONFIG['data_file'] = data_f
+    TRAIN_CONFIG['spatio_phase']['renew_rounds'] =  renew_round
     config_f = os.path.join(result_f,"config")
     if not os.path.isdir(result_f):
         os.mkdir(result_f)
@@ -227,7 +247,8 @@ def run(args):
                                            spatio_factor = 0,
                                            prior_factor = 0)
             loaders[i].renew_neighbourhood(e1.T,
-                                           nearest_k =k_nearest)
+                                           nearest_k =k_nearest,
+                                           threshold_distance = thres_dist)
             for k in np.arange(renew_round):
                 e1,_,_ = models[i].expectation(batch_i,
                                                gene_factor = 1,
@@ -235,6 +256,7 @@ def run(args):
                                                prior_factor = 0)
                 loaders[i].renew_neighbourhood(e1.T,
                                                nearest_k =k_nearest,
+                                               threshold_distance = thres_dist,
                                                partial_update = 0.1)
             e1,_,_ = models[i].expectation(batch_i,
                                            gene_factor = 1,
@@ -245,7 +267,8 @@ def run(args):
                                            spatio_factor = 0,
                                            prior_factor = 0)
             loaders[i].renew_neighbourhood(e2.T,
-                                          nearest_k = k_nearest)
+                                           nearest_k = k_nearest,
+                                           threshold_distance = thres_dist)
             for k in np.arange(renew_round):
                 e2,_,_ = models[j].expectation(batch_j,
                                                gene_factor = 1,
@@ -253,6 +276,7 @@ def run(args):
                                                prior_factor = 0)
                 loaders[i].renew_neighbourhood(e2.T,
                                                nearest_k =k_nearest,
+                                               threshold_distance = thres_dist,
                                                partial_update = 0.1)
             e2,_,_ = models[j].expectation(batch_j,
                                            gene_factor = 1,
@@ -289,8 +313,10 @@ if __name__ == "__main__":
                         help="The reduced dimension of gene expression data.")
     parser.add_argument('--k_fold',default = 12, type = int,
                         help="The number of fold cross validation.")
-    parser.add_argument('--k_nearest',default = 10, type = int,
+    parser.add_argument('--k_nearest',default = None, type = int,
                         help="The number of nearest neighbourhood.")
+    parser.add_argument('--threshold_distance',default = None, type = float,
+                        help="The threshold distance of neighbourhood.")
     parser.add_argument('--load', action='store_true',
                         help="If the models has been trained already.")
     args = parser.parse_args(sys.argv[1:])
