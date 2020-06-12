@@ -183,7 +183,8 @@ def alternative_train(data_loader,
           report_per_rounds=1,
           verbose = 1,
           stochastic_update = False,
-          nearest_k = nearest_k)
+          nearest_k = nearest_k,
+          threshold_distance = threshold_distance)
     print("Train the spatio model while hold the gene model.")
     predict_gene,ll,_ = model.expectation(data_loader.xs,
                                   spatio_factor=0,

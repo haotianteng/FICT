@@ -49,20 +49,22 @@ class RealDataLoader(dop.DataLoader):
                             type_prob,
                             threshold_distance = None,
                             nearest_k = None,
+                            update_adj = False,
                             exclude_self= False,
                             partial_update = 1,
                             hard_update = False):
-        if (nearest_k is None) and (threshold_distance is None):
-            raise TypeError("renew_neighbourhood require at least input one of\
-                            the following arguments:threshold_distance, nearest_k")
-        if threshold_distance is not None:
-            self.adjacency = dop.get_adjacency(self.coordinate,
-                                               threshold_distance,
-                                               exclude_self = exclude_self)
-        elif nearest_k is not None:
-            self.adjacency = dop.get_adjacency_knearest(self.coordinate,
-                                              nearest_k,
-                                              exclude_self = exclude_self)
+        if update_adj:
+            if (nearest_k is None) and (threshold_distance is None):
+                raise TypeError("renew_neighbourhood require at least input one of\
+                                the following arguments:threshold_distance, nearest_k")
+            if threshold_distance is not None:
+                self.adjacency = dop.get_adjacency(self.coordinate,
+                                                   threshold_distance,
+                                                   exclude_self = exclude_self)
+            elif nearest_k is not None:
+                self.adjacency = dop.get_adjacency_knearest(self.coordinate,
+                                                  nearest_k,
+                                                  exclude_self = exclude_self)
         if hard_update:
             predict = np.argmax(type_prob,axis = 1)
             type_prob = dop.one_hot_vector(predict,class_n = self.class_n)[0]

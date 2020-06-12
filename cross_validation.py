@@ -52,14 +52,20 @@ def load_train(data_loader,num_class = None):
     data_loader.y = int_y
     if num_class is None:
         one_hot_label,tags = one_hot_vector(int_y)
-        data_loader.renew_neighbourhood(one_hot_label,nearest_k = 20)
+        data_loader.renew_neighbourhood(one_hot_label,
+                                        nearest_k = TRAIN_CONFIG['spatio_phase']['nearest_k'],
+                                        threshold_distance = TRAIN_CONFIG['spatio_phase']['threshold_distance'],
+                                        update_adj = True)
         num_class = len(tags)
     else:
         arti_label = np.random.randint(low = 0, 
                                        high = num_class,
                                        size = data_loader.sample_n)
         one_hot_label,tags = one_hot_vector(arti_label)
-        data_loader.renew_neighbourhood(one_hot_label,nearest_k = 20)
+        data_loader.renew_neighbourhood(one_hot_label,
+                                        nearest_k = TRAIN_CONFIG['spatio_phase']['nearest_k'],
+                                        threshold_distance = TRAIN_CONFIG['spatio_phase']['threshold_distance'],
+                                        update_adj = True)
     num_gene = data_loader.xs[0].shape[1]
     model = FICT_EM(num_gene,
                     num_class)
@@ -147,6 +153,7 @@ def run(args):
     elif (k_nearest is not None) and (thres_dist is not None):
         print("Warning, both nearest_k and threshold_distance are provided,"+
               "nearest_k argument will not be used.")
+        k_nearest = None
         TRAIN_CONFIG['spatio_phase']['nearest_k'] = None
         TRAIN_CONFIG['spatio_phase']['threshold_distance'] = thres_dist
     else:
@@ -167,12 +174,13 @@ def run(args):
     k_max = 10
     knearest_dist = np.zeros(k_max)
     for k in np.arange(k_max):
-        print(k)
+        print("Calculate average distance for %d nearest"%(k))
         dists = get_knearest_distance(loader.coordinate,
-                                                   nearest_k = k+1)
+                                      nearest_k = k+1)
         knearest_dist[k] = np.mean(dists)
     knearest_dist = np.asarray(knearest_dist)
-    print(knearest_dist)
+    with open(os.path.join(result_f,"average_k_distance.bn"),'wb+') as f:
+        pickle.dump(knearest_dist,f)
     fields = list(set(loader.field))
     fields = np.sort(fields)
     if n> len(fields) or n==0:
@@ -188,16 +196,12 @@ def run(args):
             mask = loader.field == f
             l = RealDataLoader(loader.gene_expression[mask],
                                loader.coordinate[mask],
-                               thres_dist,
+                               20,
                                n_class,
                                field = loader.field[mask],
                                cell_labels = loader.cell_labels[mask])
             l.dim_reduce(dims = reduced_dim,method = "PCA")
             loaders.append(l)
-            l.renew_neighbourhood(one_hot_vector(l.cell_labels),
-                                  update_adj = True,
-                                  threshold_distance = thres_dist,
-                                  nearest_k=k_nearest)
             m = load_train(l,num_class=n_class)
             models.append(m)
         with open(os.path.join(result_f,"loaders.bn"),'wb+') as f:
