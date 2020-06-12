@@ -175,7 +175,7 @@ def run(args):
 #    knearest_dist = np.asarray(knearest_dist)
     fields = list(set(loader.field))
     fields = np.sort(fields)
-    if n> len(fields):
+    if n> len(fields) or n==0:
         print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
         print("Use the number of fields %d instead of input %d."%(len(fields),n))
         n = len(fields)
