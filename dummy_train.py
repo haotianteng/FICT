@@ -103,7 +103,7 @@ def train_dummy(model,
           nb_count):
     pass
 
-with open("simulator.bin",'rb') as f:
+with open("/home/heavens/CMU/FISH_Clustering/FICT/simulator.bin",'rb') as f:
     sim = pickle.load(f)
     
 ### mix the gene profile of 2nd and 3rd cell type and generate gene expression
