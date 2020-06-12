@@ -144,7 +144,6 @@ def run(args):
         print("Either nearest_k or threshold_distance is not provided,"+\
               "default nearest_k is used %d."%(TRAIN_CONFIG['spatio_phase']['nearest_k']))
         k_nearest = TRAIN_CONFIG['spatio_phase']['nearest_k']
-        pass
     elif (k_nearest is not None) and (thres_dist is not None):
         print("Warning, both nearest_k and threshold_distance are provided,"+
               "nearest_k argument will not be used.")
@@ -165,14 +164,15 @@ def run(args):
         json.dump(TRAIN_CONFIG,f)
     print("Load the data loader.")
     loader = load_loader(data_f)
-#    k_max = 10
-#    knearest_dist = np.zeros(k_max)
-#    for k in np.arange(k_max):
-#        print(k)
-#        dists = get_knearest_distance(loader.coordinate,
-#                                                   nearest_k = k+1)
-#        knearest_dist[k] = np.mean(dists)
-#    knearest_dist = np.asarray(knearest_dist)
+    k_max = 10
+    knearest_dist = np.zeros(k_max)
+    for k in np.arange(k_max):
+        print(k)
+        dists = get_knearest_distance(loader.coordinate,
+                                                   nearest_k = k+1)
+        knearest_dist[k] = np.mean(dists)
+    knearest_dist = np.asarray(knearest_dist)
+    print(knearest_dist)
     fields = list(set(loader.field))
     fields = np.sort(fields)
     if n> len(fields) or n==0:
@@ -188,12 +188,16 @@ def run(args):
             mask = loader.field == f
             l = RealDataLoader(loader.gene_expression[mask],
                                loader.coordinate[mask],
-                               20,
+                               thres_dist,
                                n_class,
                                field = loader.field[mask],
                                cell_labels = loader.cell_labels[mask])
             l.dim_reduce(dims = reduced_dim,method = "PCA")
             loaders.append(l)
+            l.renew_neighbourhood(one_hot_vector(l.cell_labels),
+                                  update_adj = True,
+                                  threshold_distance = thres_dist,
+                                  nearest_k=k_nearest)
             m = load_train(l,num_class=n_class)
             models.append(m)
         with open(os.path.join(result_f,"loaders.bn"),'wb+') as f:
