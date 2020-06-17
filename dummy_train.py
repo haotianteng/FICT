@@ -20,7 +20,7 @@ from fict.fict_input import RealDataLoader
 from fict.fict_train import permute_accuracy
 from fict.fict_train import train
 
-def mix_gene_profile(simulator, indexs,gene_proportion=1,cell_proportion = 0.5):
+def mix_gene_profile(simulator, indexs,gene_proportion=1,cell_proportion = 0.3):
     """mix the gene expression profile of cell types in indexs
     Args:
         simulator: A Simualator instance.
@@ -96,6 +96,11 @@ def plot_freq(nb_count,cell_label,plot_class):
     plt.ylabel("Frequency")
     plt.show()
 
+def accuracy_with_perm(predict,label,perm):
+    n = len(predict)
+    accur = np.sum([(predict == p) * (label == i) for i,p in enumerate(perm)])
+    return accur/n
+
 def train_dummy(model,
           epoches,
           data_loader,
@@ -154,9 +159,11 @@ for i in np.arange(em_epoches):
     predict = np.argmax(posterior,axis=0)
     partial_predict = predict[mask]
     partial_cell_type = sim_cell_type[mask]
-    Accuracy = permute_accuracy(predict,sim_cell_type)[0]
+    Accuracy,perm = permute_accuracy(predict,sim_cell_type)
     rand_score = adjusted_rand_score(predict,sim_cell_type)
-    Accuracy_same_gene = permute_accuracy(partial_predict,partial_cell_type)[0]
+    Accuracy_same_gene = accuracy_with_perm(partial_predict,
+                                            partial_cell_type,
+                                            perm)
     rand_score_same_gene = adjusted_rand_score(partial_predict,partial_cell_type)
     Accrs_gene.append(Accuracy)
     Accrs_gene_same.append(Accuracy_same_gene)
@@ -195,8 +202,10 @@ for i in np.arange(em_epoches):
                        stochastic_update=False)
     partial_predict = predict[mask]
     partial_cell_type = sim_cell_type[mask]
-    Accuracy = permute_accuracy(predict,sim_cell_type)[0]
-    Accuracy_same = permute_accuracy(partial_predict,partial_cell_type)[0]
+    Accuracy,perm = permute_accuracy(predict,sim_cell_type)
+    Accuracy_same = accuracy_with_perm(partial_predict,
+                                       partial_cell_type,
+                                       perm)
     Accrs_spatial.append(Accuracy)
     Accrs_spatial_same.append(Accuracy_same)
     print("Permute accuracy from true neighbourhood of mixd cell:%f"%(Accuracy_same))
@@ -248,8 +257,10 @@ for i in np.arange(both_rounds):
                        stochastic_update=False)
     partial_predict = predict[mask]
     partial_cell_type = sim_cell_type[mask]
-    Accuracy = permute_accuracy(predict,sim_cell_type)[0]
-    Accuracy_same = permute_accuracy(partial_predict,partial_cell_type)[0]
+    Accuracy,perm = permute_accuracy(predict,sim_cell_type)
+    Accuracy_same = accuracy_with_perm(partial_predict,
+                                       partial_cell_type,
+                                       perm)
     Accrs_both.append(Accuracy)
     Accrs_both_same.append(Accuracy_same)
     print("Permute accuracy of mixd cell:%f"%(Accuracy_same))
