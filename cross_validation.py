@@ -171,7 +171,7 @@ def run(args):
         json.dump(TRAIN_CONFIG,f)
     print("Load the data loader.")
     loader = load_loader(data_f)
-    k_max = 10
+    k_max = 30
     knearest_dist = np.zeros(k_max)
     for k in np.arange(k_max):
         print("Calculate average distance for %d nearest"%(k))
@@ -295,6 +295,7 @@ def run(args):
             e_spatio[i,j,1] = e2
     ### Visualize the result and save
     figs,axs = plt.subplots(nrows=1,ncols=2)
+    figs.set_size_inches(12,h=6)
     cvs = [cv_gene,cv_spatio]
     titles = ['Cross validation of Gene','Cross validation of Gene+Spatio']
     for i in np.arange(2):
