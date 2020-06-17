@@ -75,15 +75,16 @@ def load_train(data_loader,num_class = None):
                       train_config = TRAIN_CONFIG)
     return model
 
-def cluster_visualization(predict,loader,ax,mode = 'gene'):
+def cluster_visualization(posterior,loader,ax,mode = 'gene'):
     """Visualize the cluster
     Input:
-        predict: The cluster prediction.
+        posterior: The posterior probability .
         loader: The dataloader.
         ax: The axes of the figure that is going to be printed on.
         mode: Can be one of the following mode:
             gene, neighbourhood, coordinate.
     """
+    predict = np.argmax(posterior,axis = 0)
     class_n = len(set(predict))
     colors = cm.get_cmap('Set2', class_n)
     print("Reduce the dimension by T-SNE")
@@ -98,8 +99,22 @@ def cluster_visualization(predict,loader,ax,mode = 'gene'):
                locs[:,1],
                c=predict,
                cmap = colors,
-               s = 2)
+               s = 5)
     return ax
+
+def compare_visual(e_gene,e_spatio,loaders,i,j):
+    figs,axs = plt.subplots(nrows = 2,ncols = 2)
+    figs.set_size_inches(24,h=12)
+    loader = loaders[i]
+    cluster_visualization(e_gene[i,j,0],loader,axs[0][0],mode = 'coordinate')
+    cluster_visualization(e_gene[i,j,1],loader,axs[0][1],mode = 'coordinate')
+    cluster_visualization(e_spatio[i,j,0],loader,axs[1][0],mode = 'coordinate')
+    cluster_visualization(e_spatio[i,j,1],loader,axs[1][1],mode = 'coordinate')
+    axs[0][0].set_title("Gene model %d on dataset %d"%(i,i))
+    axs[0][1].set_title("Gene model %d on dataset %d"%(j,i))
+    axs[1][0].set_title("Spatio model %d on dataset %d"%(i,i))
+    axs[1][1].set_title("Spatio model %d on dataset %d"%(j,i))
+    return figs,axs
 
 def index_match(p_ref,p,metrics = 'KLD'):
     n1 = len(p_ref)
@@ -146,6 +161,7 @@ def run(args):
     k_nearest = args.k_nearest
     thres_dist = args.threshold_distance
     renew_round = args.renew_round
+    spatio_factor = args.spatio_factor
     if (k_nearest is None) and (thres_dist is None):
         print("Either nearest_k or threshold_distance is not provided,"+\
               "default nearest_k is used %d."%(TRAIN_CONFIG['spatio_phase']['nearest_k']))
@@ -164,6 +180,7 @@ def run(args):
     TRAIN_CONFIG['reduced_dim'] = reduced_dim
     TRAIN_CONFIG['data_file'] = data_f
     TRAIN_CONFIG['spatio_phase']['renew_rounds'] =  renew_round
+    TRAIN_CONFIG['spatio_phase']['spatio_factor'] = spatio_factor
     config_f = os.path.join(result_f,"config")
     if not os.path.isdir(result_f):
         os.mkdir(result_f)
@@ -183,17 +200,25 @@ def run(args):
         pickle.dump(knearest_dist,f)
     fields = list(set(loader.field))
     fields = np.sort(fields)
-    if n> len(fields) or n==0:
-        print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
-        print("Use the number of fields %d instead of input %d."%(len(fields),n))
-        n = len(fields)
+    if args.mode == 'bregma':
+        if n> len(fields) or n==0:
+            print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
+            print("Use the number of fields %d instead of input %d."%(len(fields),n))
+            n = len(fields)
     ### Training the models
+        def data_iterator():
+            for f in fields[:n]:
+                yield loader.field==f
+    elif args.mode == 'random':
+        split_group = np.random.randint(0,high=n,size = loader.sample_n)
+        def data_iterator():
+            for i in np.arange(n):
+                yield split_group==i
     if not args.load:
         print("Model training begin.")
         loaders = []
         models = []
-        for f in fields[:n]:
-            mask = loader.field == f
+        for mask in data_iterator():
             l = RealDataLoader(loader.gene_expression[mask],
                                loader.coordinate[mask],
                                20,
@@ -208,7 +233,6 @@ def run(args):
             pickle.dump(loaders,f)
         with open(os.path.join(result_f,"trained_models.bn"),'wb+') as f:
             pickle.dump(models,f)
-    
     ###
     
     ### Load the models and loaders from previous record
@@ -328,6 +352,10 @@ if __name__ == "__main__":
                         help="The threshold distance of neighbourhood.")
     parser.add_argument('--load', action='store_true',
                         help="If the models has been trained already.")
+    parser.add_argument('--spatio_factor',type = float, default = 1,
+                        help="The spatio factor used in spatio model.")
+    parser.add_argument('--mode', default='bregma',
+                        help="How to divide the dataset for cross validation,can be one of the following: random, bregma.")
     args = parser.parse_args(sys.argv[1:])
     if not os.path.isdir(args.output):
         os.mkdir(args.output)
