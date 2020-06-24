@@ -244,15 +244,12 @@ def run(args):
                 loaders.append(l)
         else:
             for i,l in enumerate(loaders):
-                fields = list(set(l.field))
-                fields = np.sort(fields)
-                mask = l.field==fields[args.slice]
-                l = RealDataLoader(l.gene_expression[mask],
-                                   l.coordinate[mask],
+                l = RealDataLoader(l.gene_expression,
+                                   l.coordinate,
                                    20,
                                    n_class,
-                                   field = l.field[mask],
-                                   cell_labels = l.cell_labels[mask])
+                                   field = np.asarray(l.field),
+                                   cell_labels = l.cell_labels)
                 l.dim_reduce(dims = reduced_dim,method = "PCA")
                 loaders[i] = l
         models = []
@@ -377,8 +374,6 @@ if __name__ == "__main__":
                         help="The spatio factor used in spatio model.")
     parser.add_argument('--mode', default='bregma',
                         help="How to divide the dataset for cross validation,can be one of the following: random, bregma.")
-    parser.add_argument('--slice', type = int, default=5,
-                    help="In multi mode, the index of slice used for cross validation.")
     args = parser.parse_args(sys.argv[1:])
     if not os.path.isdir(args.output):
         os.mkdir(args.output)

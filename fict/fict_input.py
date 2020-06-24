@@ -32,8 +32,11 @@ class RealDataLoader(dop.DataLoader):
         self.gene_expression = gene_expression
         self.sample_n = gene_expression.shape[0]
         self.class_n = num_class
-        self.coordinate = cell_coordinate
-        self.field = field
+        self.field = field.reshape((field.shape[0],1))
+        if cell_coordinate.shape[1] == 2:
+            self.coordinate = np.concatenate((cell_coordinate,1000*self.field),axis=1)
+        else:
+            self.coordinate = cell_coordinate
         self.adjacency = dop.get_adjacency(self.coordinate,threshold_distance)
         self.exclude_adjacency = dop.get_adjacency(self.coordinate,threshold_distance,exclude_self = True)
         self.for_eval = for_eval

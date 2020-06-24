@@ -73,7 +73,8 @@ def get_adjacency(coordinate,
     adjacency = dok_matrix((sample_n,sample_n),bool)
     for i in np.arange(sample_n):
         difference = coordinate - coordinate[i]
-        euclidean_distance = np.sqrt(difference[:,0]**2+difference[:,1]**2)
+        difference = difference**2
+        euclidean_distance = np.sqrt(np.sum(difference,axis = 1))
         adjacency_array = euclidean_distance<threshold_distance
         if exclude_self:
             adjacency_array[i] = False
