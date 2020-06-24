@@ -187,61 +187,82 @@ def run(args):
     with open(config_f,'w+') as f:
         json.dump(TRAIN_CONFIG,f)
     print("Load the data loader.")
-    loader = load_loader(data_f)
-    k_max = 30
-    knearest_dist = np.zeros(k_max)
-    for k in np.arange(k_max):
-        print("Calculate average distance for %d nearest"%(k))
-        dists = get_knearest_distance(loader.coordinate,
-                                      nearest_k = k+1)
-        knearest_dist[k] = np.mean(dists)
-    knearest_dist = np.asarray(knearest_dist)
-    with open(os.path.join(result_f,"average_k_distance.bn"),'wb+') as f:
-        pickle.dump(knearest_dist,f)
-    fields = list(set(loader.field))
-    fields = np.sort(fields)
-    if args.mode == 'bregma':
-        if n> len(fields) or n==0:
-            print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
-            print("Use the number of fields %d instead of input %d."%(len(fields),n))
-            n = len(fields)
-    ### Training the models
-        def data_iterator():
-            for f in fields[:n]:
-                yield loader.field==f
-    elif args.mode == 'random':
-        split_group = np.random.randint(0,high=n,size = loader.sample_n)
-        def data_iterator():
-            for i in np.arange(n):
-                yield split_group==i
-    if not args.load:
-        print("Model training begin.")
+    data_fs = data_f.split(',')
+    if args.mode == 'multi':
+        if len(data_fs) == 1:
+            raise ValueError("Multiple datasets are required for multi cross validation mode.")
         loaders = []
-        models = []
-        for mask in data_iterator():
-            l = RealDataLoader(loader.gene_expression[mask],
-                               loader.coordinate[mask],
-                               20,
-                               n_class,
-                               field = loader.field[mask],
-                               cell_labels = loader.cell_labels[mask])
-            l.dim_reduce(dims = reduced_dim,method = "PCA")
-            loaders.append(l)
-            m = load_train(l,num_class=n_class)
-            models.append(m)
-        with open(os.path.join(result_f,"loaders.bn"),'wb+') as f:
-            pickle.dump(loaders,f)
-        with open(os.path.join(result_f,"trained_models.bn"),'wb+') as f:
-            pickle.dump(models,f)
-    ###
-    
-    ### Load the models and loaders from previous record
+        for f in data_fs:
+            loaders.append(load_loader(f))
     else:
+        loader = load_loader(data_fs[0])
+### Get the relationship between threshold neighbourhood distance and knearest neighbour.
+#    k_max = 30
+#    knearest_dist = np.zeros(k_max)
+#    for k in np.arange(k_max):
+#        print("Calculate average distance for %d nearest"%(k))
+#        dists = get_knearest_distance(loader.coordinate,
+#                                      nearest_k = k+1)
+#        knearest_dist[k] = np.mean(dists)
+#    knearest_dist = np.asarray(knearest_dist)
+#    with open(os.path.join(result_f,"average_k_distance.bn"),'wb+') as f:
+#        pickle.dump(knearest_dist,f)
+### 
+    if args.load:
         print("Load the models.")
         with open(os.path.join(args.output,"loaders.bn"),'rb') as f:
             loaders = pickle.load(f)
         with open(os.path.join(args.output,"trained_models.bn"),'rb') as f:
             models = pickle.load(f)
+    else:
+        if args.mode != 'multi':
+            fields = list(set(loader.field))
+            fields = np.sort(fields)
+            if args.mode == 'bregma':
+                if n> len(fields) or n==0:
+                    print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
+                    print("Use the number of fields %d instead of input %d."%(len(fields),n))
+                    n = len(fields)
+                def data_iterator():
+                    for f in fields[:n]:
+                        yield loader.field==f
+            elif args.mode == 'random':
+                split_group = np.random.randint(0,high=n,size = loader.sample_n)
+                def data_iterator():
+                    for i in np.arange(n):
+                        yield split_group==i
+            print("Model training begin.")
+            loaders = []
+            for mask in data_iterator():
+                l = RealDataLoader(loader.gene_expression[mask],
+                                   loader.coordinate[mask],
+                                   20,
+                                   n_class,
+                                   field = loader.field[mask],
+                                   cell_labels = loader.cell_labels[mask])
+                l.dim_reduce(dims = reduced_dim,method = "PCA")
+                loaders.append(l)
+        else:
+            for i,l in enumerate(loaders):
+                fields = list(set(l.field))
+                fields = np.sort(fields)
+                mask = l.field==fields[args.slice]
+                l = RealDataLoader(l.gene_expression[mask],
+                                   l.coordinate[mask],
+                                   20,
+                                   n_class,
+                                   field = l.field[mask],
+                                   cell_labels = l.cell_labels[mask])
+                l.dim_reduce(dims = reduced_dim,method = "PCA")
+                loaders[i] = l
+        models = []
+        for l in loaders:
+            m = load_train(l,num_class = n_class)
+            models.append(m)
+        with open(os.path.join(result_f,"loaders.bn"),'wb+') as f:
+            pickle.dump(loaders,f)
+        with open(os.path.join(result_f,"trained_models.bn"),'wb+') as f:
+            pickle.dump(models,f)
     ###
     renew_round = args.renew_round
     cv_gene = np.zeros((n,n))
@@ -335,7 +356,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='FICT',
                                      description='A cell type clsuter for FISH data.')
     parser.add_argument('-i', '--input', required = True,
-                        help="The input data loader pickle file.")
+                        help="The input data loader pickle file, multiple input file separated by comma.")
     parser.add_argument('-o','--output', required = True,
                         help="The output folder")
     parser.add_argument('--renew_round', default = 30, type = int,
@@ -356,6 +377,8 @@ if __name__ == "__main__":
                         help="The spatio factor used in spatio model.")
     parser.add_argument('--mode', default='bregma',
                         help="How to divide the dataset for cross validation,can be one of the following: random, bregma.")
+    parser.add_argument('--slice', type = int, default=5,
+                    help="In multi mode, the index of slice used for cross validation.")
     args = parser.parse_args(sys.argv[1:])
     if not os.path.isdir(args.output):
         os.mkdir(args.output)
