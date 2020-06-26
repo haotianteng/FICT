@@ -213,6 +213,10 @@ def run(args):
         with open(os.path.join(args.output,"loaders.bn"),'rb') as f:
             loaders = pickle.load(f)
             fields = np.arange(len(loaders))
+        if n> len(fields) or n==0:
+            print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
+            print("Use the number of fields %d instead of input %d."%(len(fields),n))
+            n = len(fields)
         with open(os.path.join(args.output,"trained_models.bn"),'rb') as f:
             models = pickle.load(f)
     else:
