@@ -243,6 +243,7 @@ def run(args):
                 l.dim_reduce(dims = reduced_dim,method = "PCA")
                 loaders.append(l)
         else:
+            fields = np.arange(len(loaders))
             for i,l in enumerate(loaders):
                 l = RealDataLoader(l.gene_expression,
                                    l.coordinate,
