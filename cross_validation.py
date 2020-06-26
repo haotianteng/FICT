@@ -245,6 +245,10 @@ def run(args):
                 loaders.append(l)
         else:
             fields = np.arange(len(loaders))
+            if n> len(fields) or n==0:
+                print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
+                print("Use the number of fields %d instead of input %d."%(len(fields),n))
+                n = len(fields)
             for i,l in enumerate(loaders):
                 l = RealDataLoader(l.gene_expression,
                                    l.coordinate,
