@@ -212,6 +212,7 @@ def run(args):
         print("Load the models.")
         with open(os.path.join(args.output,"loaders.bn"),'rb') as f:
             loaders = pickle.load(f)
+            fields = np.arange(len(loaders))
         with open(os.path.join(args.output,"trained_models.bn"),'rb') as f:
             models = pickle.load(f)
     else:
