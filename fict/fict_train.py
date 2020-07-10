@@ -169,6 +169,7 @@ def alternative_train(data_loader,
     prior_factor_s = train_config['spatio_phase']['prior_factor']
     renew_rounds = train_config['spatio_phase']['renew_rounds']
     partial_update = train_config['spatio_phase']['partial_update']
+    equal_contribute = train_config['spatio_phase']['equal_contribute']
     accur_record_gene = train(model,
                               0.5,
                               gene_round,
@@ -230,7 +231,7 @@ def alternative_train(data_loader,
           nearest_k = nearest_k,
           threshold_distance = threshold_distance,
           partial_update = partial_update,
-          equal_contrib = True)
+          equal_contrib = equal_contribute)
     return model,(accur_record_gene,accur_record_spatio,accur_record_both)
 
 if __name__ == "__main__":

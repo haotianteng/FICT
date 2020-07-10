@@ -40,7 +40,8 @@ TRAIN_CONFIG['spatio_phase'] = {'gene_factor':1.0,
                                 'nearest_k':10,
                                 'threshold_distance':None,
                                 'renew_rounds':30,
-                                'partial_update':0.1}
+                                'partial_update':0.1,
+                                'equal_contribute':False}
 
 def load_pickle(f):
     with open(f,'rb') as x:
@@ -162,6 +163,7 @@ def run(args):
     thres_dist = args.threshold_distance
     renew_round = args.renew_round
     spatio_factor = args.spatio_factor
+    equal_contribute = args.equal_contribute
     if (k_nearest is None) and (thres_dist is None):
         print("Either nearest_k or threshold_distance is not provided,"+\
               "default nearest_k is used %d."%(TRAIN_CONFIG['spatio_phase']['nearest_k']))
@@ -181,6 +183,7 @@ def run(args):
     TRAIN_CONFIG['data_file'] = data_f
     TRAIN_CONFIG['spatio_phase']['renew_rounds'] =  renew_round
     TRAIN_CONFIG['spatio_phase']['spatio_factor'] = spatio_factor
+    TRAIN_CONFIG['spatio_phase']['equal_contribute'] = equal_contribute
     config_f = os.path.join(result_f,"config")
     if not os.path.isdir(result_f):
         os.mkdir(result_f)
@@ -382,6 +385,8 @@ if __name__ == "__main__":
                         help="If the models has been trained already.")
     parser.add_argument('--spatio_factor',type = float, default = 1,
                         help="The spatio factor used in spatio model.")
+    parser.add_argument('--equal_contribute',action = "store_true", 
+                        help="If normalize the probability of gene and spatio.")
     parser.add_argument('--mode', default='bregma',
                         help="How to divide the dataset for cross validation,can be one of the following: random, bregma.")
     args = parser.parse_args(sys.argv[1:])
