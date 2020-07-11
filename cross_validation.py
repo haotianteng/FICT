@@ -74,7 +74,7 @@ def load_train(data_loader,num_class = None):
     alternative_train(data_loader,
                       model,
                       train_config = TRAIN_CONFIG)
-    return modeltsne_reduce
+    return model
 
 def cluster_visualization(posterior,loader,ax,mode = 'gene'):
     """Visualize the cluster
