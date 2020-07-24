@@ -31,13 +31,18 @@ def one_hot_vector(label,class_n = None):
         one_hot[label==tag,tag_idx] = 1
     return one_hot,tags
 
-def tsne_reduce(X,dims = 2,method = "exact"):
-    tsne = manifold.TSNE(n_components=dims, 
-                         init='pca', 
-                         random_state=0,
-                         method = method)
+def embedding_reduce(X,embedding):
+    reduced_X = X@embedding
+    return reduced_X,embedding
+
+def tsne_reduce(X,dims = 2,method = "exact",tsne = None):
+    if tsne is None:
+        tsne = manifold.TSNE(n_components=dims, 
+                             init='pca', 
+                             random_state=0,
+                             method = method)
     reduced_X = tsne.fit_transform(X)
-    return reduced_X
+    return reduced_X,tsne
 
 def pca_reduce(X, dims=2,pca = None):
     """ Reduce the dimensions of X down to dims using PCA

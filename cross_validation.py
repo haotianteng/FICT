@@ -13,6 +13,7 @@ from fict.fict_model import FICT_EM
 from fict.fict_input import RealDataLoader
 from fict.utils.data_op import tsne_reduce
 from fict.utils.data_op import pca_reduce
+from fict.utils.data_op import embedding_reduce
 from fict.utils.data_op import one_hot_vector
 from fict.utils.data_op import KL_divergence
 from fict.utils.data_op import get_knearest_distance
@@ -21,6 +22,7 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 import pickle
 from fict.utils.data_op import tag2int,load_loader
+from fict.utils import embedding as emb
 from fict.fict_train import alternative_train
 from fict.fict_train import centroid_ellipse
 import seaborn as sns
@@ -164,6 +166,8 @@ def run(args):
     renew_round = args.renew_round
     spatio_factor = args.spatio_factor
     equal_contribute = args.equal_contribute
+    reduced_method = args.reduced_method
+    embedding_file = args.embedding_file
     if (k_nearest is None) and (thres_dist is None):
         print("Either nearest_k or threshold_distance is not provided,"+\
               "default nearest_k is used %d."%(TRAIN_CONFIG['spatio_phase']['nearest_k']))
@@ -180,11 +184,14 @@ def run(args):
     n=args.k_fold
     TRAIN_CONFIG['n_class'] = n_class
     TRAIN_CONFIG['reduced_dim'] = reduced_dim
+    TRAIN_CONFIG['reduced_method'] = reduced_method
+    TRAIN_CONFIG['embedding_file'] = embedding_file
     TRAIN_CONFIG['data_file'] = data_f
     TRAIN_CONFIG['spatio_phase']['renew_rounds'] =  renew_round
     TRAIN_CONFIG['spatio_phase']['spatio_factor'] = spatio_factor
     TRAIN_CONFIG['spatio_phase']['equal_contribute'] = equal_contribute
     config_f = os.path.join(result_f,"config")
+    embedding = emb.load_embedding(embedding_file)
     if not os.path.isdir(result_f):
         os.mkdir(result_f)
     with open(config_f,'w+') as f:
@@ -248,7 +255,9 @@ def run(args):
                                    n_class,
                                    field = loader.field[mask],
                                    cell_labels = loader.cell_labels[mask])
-                l.dim_reduce(dims = reduced_dim,method = "PCA")
+                l.dim_reduce(dims = reduced_dim,
+                             method = reduced_method,
+                             embedding = embedding)
                 loaders.append(l)
         else:
             fields = np.arange(len(loaders))
@@ -263,7 +272,9 @@ def run(args):
                                    n_class,
                                    field = np.asarray(l.field),
                                    cell_labels = l.cell_labels)
-                l.dim_reduce(dims = reduced_dim,method = "PCA")
+                l.dim_reduce(dims = reduced_dim,
+                             method = reduced_method,
+                             embedding = embedding)
                 loaders[i] = l
         models = []
         for l in loaders:
@@ -279,16 +290,24 @@ def run(args):
     cv_spatio = np.zeros((n,n))
     e_gene = np.empty((n,n,2),dtype = np.object)
     e_spatio = np.empty((n,n,2),dtype = np.object)
-    pca_eigens = []
+    proj = []
     for i in np.arange(n):
-        _,components = pca_reduce(loaders[i].gene_expression,dims = reduced_dim)
-        pca_eigens.append(components)
+        if reduced_method == 'PCA':
+            _,components = pca_reduce(loaders[i].gene_expression,dims = reduced_dim)
+            reduced_func = lambda x,y:pca_reduce(x,pca = y)
+        elif reduced_method == 'TSNE':
+            _,components = tsne_reduce(loaders[i].gene_expression,dims = reduced_dim)
+            reduced_func = lambda x,y:tsne_reduce(x,tsne = y)
+        elif reduced_method == 'Embedding':
+            _,components = embedding_reduce(loaders[i].gene_expression,embedding = embedding)
+            reduced_func = lambda x,y:embedding_reduce(x,embedding = y)
+        proj.append(components)
         
     for i in range(n):
         for j in range(n):
             print((i,j))
-            batch_i = (pca_reduce(loaders[i].gene_expression,pca = pca_eigens[i])[0],loaders[i].xs[1])
-            batch_j = (pca_reduce(loaders[i].gene_expression,pca = pca_eigens[j])[0],loaders[i].xs[1])
+            batch_i = (reduced_func(loaders[i].gene_expression,proj[i])[0],loaders[i].xs[1])
+            batch_j = (reduced_func(loaders[i].gene_expression,proj[j])[0],loaders[i].xs[1])
             e1,_,_ = models[i].expectation(batch_i,
                                            gene_factor = 1,
                                            spatio_factor = 0,
@@ -303,8 +322,8 @@ def run(args):
     for i in range(n):
         for j in range(n):
             print((i,j))
-            batch_i = (pca_reduce(loaders[i].gene_expression,pca = pca_eigens[i])[0],loaders[i].xs[1])
-            batch_j = (pca_reduce(loaders[i].gene_expression,pca = pca_eigens[j])[0],loaders[i].xs[1])
+            batch_i = (reduced_func(loaders[i].gene_expression,proj[i])[0],loaders[i].xs[1])
+            batch_j = (reduced_func(loaders[i].gene_expression,proj[j])[0],loaders[i].xs[1])
             e1,_,_ = models[i].expectation(batch_i,
                                            gene_factor = 1,
                                            spatio_factor = 0,
@@ -385,6 +404,10 @@ if __name__ == "__main__":
                         help="If the models has been trained already.")
     parser.add_argument('--spatio_factor',type = float, default = 1,
                         help="The spatio factor used in spatio model.")
+    parser.add_argument('--reduced_method', default = 'PCA',
+                        help="The method used to do dimension reduction, can be PCA, TSNE and Embedding.")
+    parser.add_argument('--embedding_file', default = None,
+                        help="The path of the embedding file if embedding is chosen to do dimension reduction.")
     parser.add_argument('--equal_contribute',action = "store_true", 
                         help="If normalize the probability of gene and spatio.")
     parser.add_argument('--mode', default='bregma',

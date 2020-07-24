@@ -32,6 +32,8 @@ class RealDataLoader(dop.DataLoader):
         self.gene_expression = gene_expression
         self.sample_n = gene_expression.shape[0]
         self.class_n = num_class
+        if field is None:
+            field = np.zeros(self.sample_n)
         self.field = field.reshape((field.shape[0],1))
         if cell_coordinate.shape[1] == 2:
             self.coordinate = np.concatenate((cell_coordinate,1000*self.field),axis=1)
@@ -85,14 +87,16 @@ class RealDataLoader(dop.DataLoader):
                                                     one_hot_label = True)
         self.xs = (self.xs[0],self.nb_count)
         
-    def dim_reduce(self,dims = 10,method = "PCA"):
+    def dim_reduce(self,dims = 10,method = "PCA",embedding = None):
         if method == "PCA":
             self.reduced_gene_expression,self.pca_components = dop.pca_reduce(self.gene_expression,dims = dims)
             self.xs = (self.reduced_gene_expression,self.nb_count)    
         elif method == "TSNE":
-            self.reduced_gene_expression = dop.tsne_reduce(self.gene_expression,dims = dims)
-            self.xs = (self.reduced_gene_expression,self.nb_count) 
-
+            self.reduced_gene_expression,_ = dop.tsne_reduce(self.gene_expression,dims = dims)
+            self.xs = (self.reduced_gene_expression,self.nb_count)
+        elif method == "Embedding":
+            self.reduced_gene_expression,_ = dop.embedding_reduce(self.gene_expression,embedding = embedding)
+            self.xs = (self.reduced_gene_expression,self.nb_count)
 if __name__ == "__main__":
     ### Hyper parameter setting
     print("Setting hyper parameter")
