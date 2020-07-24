@@ -306,7 +306,7 @@ def run(args):
         
     for i in range(n):
         for j in range(n):
-            loaders[i] = np.copy(loaders_bk[i])
+            loaders = np.copy(loaders_bk)
             print((i,j))
             batch_i = (reduced_func(loaders[i].gene_expression,proj[i])[0],loaders[i].xs[1])
             batch_j = (reduced_func(loaders[i].gene_expression,proj[j])[0],loaders[i].xs[1])
@@ -323,7 +323,7 @@ def run(args):
             cv_gene[i,j] = adjusted_rand_score(np.argmax(e1,axis = 0),np.argmax(e2,axis = 0))
     for i in range(n):
         for j in range(n):
-            loaders[i] = np.copy(loaders_bk[i])
+            loaders = np.copy(loaders_bk)
             print((i,j))
             batch_i = (reduced_func(loaders[i].gene_expression,proj[i])[0],loaders[i].xs[1])
             batch_j = (reduced_func(loaders[i].gene_expression,proj[j])[0],loaders[i].xs[1])
@@ -351,7 +351,7 @@ def run(args):
                                            gene_factor = 1,
                                            spatio_factor = 0,
                                            prior_factor = 0)
-            loaders[i] = np.copy(loaders_bk[i])
+            loaders = np.copy(loaders_bk)
             loaders[i].renew_neighbourhood(e2.T,
                                            nearest_k = k_nearest,
                                            threshold_distance = thres_dist)
