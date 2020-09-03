@@ -33,6 +33,7 @@ TRAIN_CONFIG = {'gene_phase':{},'spatio_phase':{}}
 TRAIN_CONFIG['gene_round'] = 20
 TRAIN_CONFIG['spatio_round'] = 10
 TRAIN_CONFIG['both_round'] = 10
+TRAIN_CONFIG['verbose'] = 2
 TRAIN_CONFIG['gene_phase'] = {'gene_factor':1.0,
                               'spatio_factor':0.0,
                               'prior_factor':0.0}
@@ -248,7 +249,11 @@ def run(args):
                         yield split_group==i
             print("Model training begin.")
             loaders = []
+            loader.dim_reduce(dims = reduced_dim,
+                              method = reduced_method,
+                              embedding = embedding)
             for mask in data_iterator():
+                from fict.utils import data_op as dop
                 l = RealDataLoader(loader.gene_expression[mask],
                                    loader.coordinate[mask],
                                    20,
