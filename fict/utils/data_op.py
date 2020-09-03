@@ -52,7 +52,9 @@ def pca_reduce(X, dims=2,pca = None):
     """
     print("reducing dimensions using PCA")
     X = X - np.mean(X,axis = 0,keepdims = True)
-    X = X/np.std(X,axis = 0, keepdims = True)
+    std = np.std(X,axis = 0, keepdims = True)
+    std[std==0] += 1e-9 #Add a small pseudo count to avoid divide by 0 error.
+    X = X/std
     if pca is None:
         pca = PCA(n_components = dims)
         pca.fit(X)
