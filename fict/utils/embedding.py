@@ -17,6 +17,7 @@ def load_embedding(model_folder):
     ckpt_file = os.path.join(model_folder,'checkpoint') 
     with open(ckpt_file,'r') as f:
         latest_ckpt = f.readline().strip().split(':')[1]
-    state_dict = torch.load(os.path.join(model_folder,latest_ckpt))
+    state_dict = torch.load(os.path.join(model_folder,latest_ckpt),
+                            map_location=torch.device('cpu'))
     embedding_matrix = state_dict['linear1.weight'].detach().cpu().numpy()
     return embedding_matrix.transpose()
