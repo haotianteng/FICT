@@ -50,7 +50,7 @@ def centroid_ellipse(x,y,m,axs):
     colors = cm.get_cmap('Set2', len(tags))
     y_color = [tags.index(x) for x in y]
     axs.scatter(x[:,0],x[:,1],c = y_color,cmap = colors,s = 2)
-    for c in np.arange(len(tags)):
+    for c in np.arange(m.p['class_n']):
         value,vectors = scipy.linalg.eig(m.p['g_cov'][c][0:2,0:2])
         value = abs(value)
         max_v = np.argmax(value)
@@ -92,7 +92,7 @@ def train(model,
         raise ValueError("nearest_k and threshold_distance can't be assigned at the same time.")
     if verbose>1:
         fig,axs = plt.subplots()
-        centroid_ellipse(data_loader.xs,data_loader.y,model,axs)
+        centroid_ellipse(data_loader.xs[0],data_loader.y,model,axs)
         plt.show()
     for i in range(train_rounds):
         x_batch,y = data_loader.next_batch(batch_size,shuffle = True)
@@ -129,7 +129,7 @@ def train(model,
         if i%report_per_rounds == 0:
             if verbose>1:
                 fig,axs = plt.subplots()
-                centroid_ellipse(x_batch,y,model,axs)
+                centroid_ellipse(x_batch[0],y,model,axs)
                 plt.show()
             if verbose>0:
                 print("%d Round Accuracy:%f"%(i,accuracy))
@@ -158,6 +158,7 @@ def alternative_train(data_loader,
     gene_round = train_config['gene_round']
     spatial_round = train_config['spatio_round']
     both_round = train_config['both_round']
+    verbose = train_config['verbose']
     threshold_distance = train_config['spatio_phase']['threshold_distance']
     nearest_k = train_config['spatio_phase']['nearest_k']
     batch_size = train_config['batch_size']
@@ -182,7 +183,7 @@ def alternative_train(data_loader,
                               prior_factor = prior_factor_g,
                               gene_factor = gene_factor_g,
                               report_per_rounds=1,
-                              verbose = 1,
+                              verbose = verbose,
                               stochastic_update = False,
                               nearest_k = nearest_k,
                               threshold_distance = threshold_distance)
@@ -225,7 +226,7 @@ def alternative_train(data_loader,
           update_spatio = True,
           update_gene = False,
           report_per_rounds=1,
-          renew_per_rounds = 1, #No neighbourhood frequency renew during training.
+          renew_per_rounds = 1, 
           renew_neighbourhood = renew_rounds,
           verbose = 1,
           nearest_k = nearest_k,

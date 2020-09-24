@@ -25,6 +25,7 @@ from fict.utils.data_op import tag2int,load_loader
 from fict.utils import embedding as emb
 from fict.fict_train import alternative_train
 from fict.fict_train import centroid_ellipse
+from fict.utils import data_op as dop
 import seaborn as sns
 import argparse
 import sys
@@ -33,7 +34,7 @@ TRAIN_CONFIG = {'gene_phase':{},'spatio_phase':{}}
 TRAIN_CONFIG['gene_round'] = 20
 TRAIN_CONFIG['spatio_round'] = 10
 TRAIN_CONFIG['both_round'] = 10
-TRAIN_CONFIG['verbose'] = 2
+TRAIN_CONFIG['verbose'] = 1
 TRAIN_CONFIG['gene_phase'] = {'gene_factor':1.0,
                               'spatio_factor':0.0,
                               'prior_factor':0.0}
@@ -42,7 +43,7 @@ TRAIN_CONFIG['spatio_phase'] = {'gene_factor':1.0,
                                 'prior_factor':0.0,
                                 'nearest_k':10,
                                 'threshold_distance':None,
-                                'renew_rounds':30,
+                                'renew_rounds':5,
                                 'partial_update':0.1,
                                 'equal_contribute':False}
 
@@ -253,7 +254,6 @@ def run(args):
                               method = reduced_method,
                               embedding = embedding)
             for mask in data_iterator():
-                from fict.utils import data_op as dop
                 l = RealDataLoader(loader.gene_expression[mask],
                                    loader.coordinate[mask],
                                    20,
@@ -308,7 +308,7 @@ def run(args):
             _,components = embedding_reduce(loaders[i].gene_expression,embedding = embedding)
             reduced_func = lambda x,y:embedding_reduce(x,embedding = y)
         proj.append(components)
-        
+    print("Begin Cross Validation")
     for i in range(n):
         for j in range(n):
             loaders = np.copy(loaders_bk)
@@ -385,8 +385,7 @@ def run(args):
         ax = axs[i]
         cv = cvs[i]
         heatmap(cv,ax,xticks = fields, yticks = fields,title = titles[i])
-    figs.tight_layout()
-    figs.savefig(os.path.join(result_f,'cv.png'))
+    figs.savefig(os.path.join(result_f,'cv.png'),bbox_inches='tight')
     with open(os.path.join(result_f,"cv_result.bn"),'wb+') as f:
         pickle.dump([e_gene,e_spatio,cv_gene,cv_spatio],f)
 

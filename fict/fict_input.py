@@ -26,12 +26,14 @@ class RealDataLoader(dop.DataLoader):
                  cell_coordinate,
                  threshold_distance,
                  num_class,
+                 gene_list = None,
                  field = None,
                  cell_labels = None,
                  for_eval = False):
         self.gene_expression = gene_expression
         self.sample_n = gene_expression.shape[0]
         self.class_n = num_class
+        self.gene_list = gene_list
         if field is None:
             field = np.zeros(self.sample_n)
         field = np.asarray(field)
@@ -89,9 +91,9 @@ class RealDataLoader(dop.DataLoader):
                                                     one_hot_label = True)
         self.xs = (self.xs[0],self.nb_count)
         
-    def dim_reduce(self,dims = 10,method = "PCA",embedding = None):
+    def dim_reduce(self,dims = 10,method = "PCA",embedding = None,pca_components = None):
         if method == "PCA":
-            self.reduced_gene_expression,self.pca_components = dop.pca_reduce(self.gene_expression,dims = dims)
+            self.reduced_gene_expression,self.pca_components = dop.pca_reduce(self.gene_expression,dims = dims,pca = pca_components)
             self.xs = (self.reduced_gene_expression,self.nb_count)    
         elif method == "TSNE":
             self.reduced_gene_expression,_ = dop.tsne_reduce(self.gene_expression,dims = dims)

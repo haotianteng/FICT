@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 from scipy.sparse import dok_matrix
 import pickle
 from sklearn import manifold
+import os 
 
 def tag2int(label):
     tags = list(set(label))
@@ -240,6 +241,31 @@ class DataLoader():
 def save_loader(loader,save_f):
     with open(save_f,'wb+') as f:
         pickle.dump(loader,f)
+
+def save_smfish(loader,save_prefix):
+    """Save the data in the loader as the smfishHmrf format:
+    http://spatial.rc.fas.harvard.edu/install.html
+    """
+    norm_expr = loader.gene_expression - np.mean(loader.gene_expression,axis = 1,keepdims = True)
+    std_expr = np.std(loader.gene_expression,axis = 1,keepdims = True)
+    zero_mask = std_expr != 0
+    zero_mask = np.reshape(zero_mask,newshape=zero_mask.shape[0])
+    norm_expr = norm_expr[zero_mask,:] / std_expr[zero_mask]
+    with open(save_prefix+'.expression','w+') as f:
+        for i,expr in enumerate(norm_expr):
+            f.write("%d %s\n"%(i,' '.join([str(e) for e in expr])))
+    coordinate = loader.coordinate[zero_mask,:]
+    with open(save_prefix+'.coordinates','w+') as f:
+        if coordinate.shape[1]==2:
+            for i,p in enumerate(coordinate):
+                f.write("%d %.3f %.3f %.3f\n"%(i,0,p[0],p[1]))
+        elif coordinate.shape[1] ==3:
+            for i,p in enumerate(coordinate):
+                f.write("%d %.3f %.3f %.3f\n"%(i,p[2],p[0],p[1]))
+    with open(save_prefix+'.genes','w+') as f:
+        for i,g in enumerate(loader.gene_list):
+            f.write("%s\n"%(g))
+
 
 def load_loader(save_f):
     with open(save_f,'rb') as f:

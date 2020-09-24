@@ -7,6 +7,7 @@ Created on Tue Mar  3 04:05:14 2020
 """
 
 import numpy as np
+import scipy
 from scipy.stats import multivariate_normal
 from fict.utils.random_generator import continuous_multinomial
 from scipy.special import softmax
@@ -15,6 +16,7 @@ from sklearn.decomposition import PCA
 from sklearn import manifold
 from sklearn.cluster import KMeans
 from time import time
+import warnings
 
 def pca_reduce(X, dims=2):
     """ Reduce the dimensions of X down to dims using PCA
@@ -44,6 +46,52 @@ def tsne_reduce(X,dims = 5):
 #    mean = np.mean(X,axis = )
 #    cv = 
 
+def ridge_cov(cov,l = 1e-4):
+    """Find a nonsigular approximation of the given singular covariance matrix
+    by adding positive diagonal element lI.
+    """
+    if(l>1e-2):
+        warnings.warn("Running ridge cov too many times, may influence the running speed.")
+    dim = cov.shape[0]
+    s, u = scipy.linalg.eigh(cov, lower=True, check_finite=True)
+    tol = _eigvalsh_to_eps(s)
+    d = s[s>tol]
+    if len(d)<len(s):
+        return ridge_cov(cov + np.diag([l]*dim),l = l*1.1)
+    else:
+        return cov
+    
+    
+def _eigvalsh_to_eps(spectrum, cond=None, rcond=None):
+    """
+    Scipy function from module scipy.stats._multivariate
+    Determine which eigenvalues are "small" given the spectrum.
+    This is for compatibility across various linear algebra functions
+    that should agree about whether or not a Hermitian matrix is numerically
+    singular and what is its numerical matrix rank.
+    This is designed to be compatible with scipy.linalg.pinvh.
+    Parameters
+    ----------
+    spectrum : 1d ndarray
+        Array of eigenvalues of a Hermitian matrix.
+    cond, rcond : float, optional
+        Cutoff for small eigenvalues.
+        Singular values smaller than rcond * largest_eigenvalue are
+        considered zero.
+        If None or -1, suitable machine precision is used.
+    Returns
+    -------
+    eps : float
+        Magnitude cutoff for numerical negligibility.
+    """
+    if rcond is not None:
+        cond = rcond
+    if cond in [None, -1]:
+        t = spectrum.dtype.char.lower()
+        factor = {'f': 1E3, 'd': 1E6}
+        cond = factor[t] * np.finfo(t).eps
+    eps = cond * np.max(abs(spectrum))
+    return eps
 
 class FICT_EM(EM):
     def __init__(self,
@@ -51,20 +99,13 @@ class FICT_EM(EM):
                  class_n,
                  dirichlet_alpha = None):
         g_mean = np.random.rand(class_n,gene_n)
-        tol = 1e-7
         g_cov = []
         for i in range(class_n):
             while True:
                 #This is to ensure the generated matrix is invertible.
                 temp = np.random.rand(gene_n,gene_n)
                 cov = np.dot(temp,np.transpose(temp))
-                try:
-                    singularity = np.abs(np.matmul(cov,np.linalg.inv(cov)) - np.eye(gene_n))
-                    if np.all(singularity[:]<tol):
-                        g_cov.append(cov)
-                        break
-                except np.linalg.LinAlgError:
-                    pass
+                cov = ridge_cov(cov)
         g_cov = np.asarray(g_cov)
         mn_p = np.random.rand(class_n,class_n)
         mn_p = mn_p/np.sum(mn_p,axis = 1,keepdims = True)
@@ -105,10 +146,10 @@ class FICT_EM(EM):
             if np.sum(mask) <= 1:
                 print("Warning %d class has no cell in initialized KNN,\
                       reduce the number of classes, initial covariance matrix\
-                      with identity matrix.")
+                      with identity matrix."%(i))
                 self.p['g_cov'][i] = np.eye(self.gene_n)
             else:
-                self.p['g_cov'][i] = np.cov(batch[mask].T)
+                self.p['g_cov'][i] = ridge_cov(np.cov(batch[mask].T))
     
     def expectation(self,
                     batch,
@@ -121,7 +162,7 @@ class FICT_EM(EM):
         self.Gs = []
         self.MNs = []
         for i in range(self.p['class_n']):
-            self.Gs.append(multivariate_normal(self.p['g_mean'][i],self.p['g_cov'][i],allow_singular=True))
+            self.Gs.append(multivariate_normal(self.p['g_mean'][i],self.p['g_cov'][i],allow_singular=False))
             self.MNs.append(continuous_multinomial(self.p['mn_p'][i]))
         self.Prior = self.p['prior']
         batch_n = gene_batch.shape[0]
@@ -193,11 +234,11 @@ class FICT_EM(EM):
                 batch_norm = gene_batch - self.p['g_mean'][i]
                 cov = np.matmul(posterior[i]*np.transpose(batch_norm),batch_norm)
                 if stochastic_update:
-                    self.p['g_cov'][i] = self._ema(self.p['g_cov'][i],
+                    self.p['g_cov'][i] = ridge_cov(self._ema(self.p['g_cov'][i],
                                                    gene_factor*cov/post_sum[i],
-                                                   decay = decay)
+                                                   decay = decay))
                 else:
-                    self.p['g_cov'][i] = gene_factor*cov/post_sum[i]
+                    self.p['g_cov'][i] = ridge_cov(gene_factor*cov/post_sum[i])
         if stochastic_update:
             new_prior = self._entropic_descent(np.reshape(self.p['prior'],(1,self.class_n)),
                                         np.reshape(post_sum[:,0]/batch_n,(1,self.class_n)),
