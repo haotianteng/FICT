@@ -46,18 +46,20 @@ def tsne_reduce(X,dims = 5):
 #    mean = np.mean(X,axis = )
 #    cv = 
 
-def ridge_cov(cov,l = 1e-4):
+def ridge_cov(cov,l = 1e-4,check = True):
     """Find a nonsigular approximation of the given singular covariance matrix
     by adding positive diagonal element lI.
     """
     if(l>1e-2):
         warnings.warn("Running ridge cov too many times, may influence the running speed.")
     dim = cov.shape[0]
+    if not check:
+        return cov + np.diag([l]*dim)
     s, u = scipy.linalg.eigh(cov, lower=True, check_finite=True)
     tol = _eigvalsh_to_eps(s)
     d = s[s>tol]
     if len(d)<len(s):
-        return ridge_cov(cov + np.diag([l]*dim),l = l*1.1)
+        return ridge_cov(cov + np.diag([l]*dim),l = l*1.1,check = check)
     else:
         return cov
     
@@ -101,11 +103,11 @@ class FICT_EM(EM):
         g_mean = np.random.rand(class_n,gene_n)
         g_cov = []
         for i in range(class_n):
-            while True:
-                #This is to ensure the generated matrix is invertible.
-                temp = np.random.rand(gene_n,gene_n)
-                cov = np.dot(temp,np.transpose(temp))
-                cov = ridge_cov(cov)
+            #This is to ensure the generated matrix is invertible.
+            temp = np.random.rand(gene_n,gene_n)
+            cov = np.dot(temp,np.transpose(temp))
+            cov = ridge_cov(cov,check = True)
+            g_cov.append(cov)
         g_cov = np.asarray(g_cov)
         mn_p = np.random.rand(class_n,class_n)
         mn_p = mn_p/np.sum(mn_p,axis = 1,keepdims = True)
