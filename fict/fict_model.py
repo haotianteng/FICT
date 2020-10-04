@@ -238,9 +238,9 @@ class FICT_EM(EM):
                 if stochastic_update:
                     self.p['g_cov'][i] = ridge_cov(self._ema(self.p['g_cov'][i],
                                                    gene_factor*cov/post_sum[i],
-                                                   decay = decay))
+                                                   decay = decay),check = False)
                 else:
-                    self.p['g_cov'][i] = ridge_cov(gene_factor*cov/post_sum[i])
+                    self.p['g_cov'][i] = ridge_cov(gene_factor*cov/post_sum[i],check = False)
         if stochastic_update:
             new_prior = self._entropic_descent(np.reshape(self.p['prior'],(1,self.class_n)),
                                         np.reshape(post_sum[:,0]/batch_n,(1,self.class_n)),
