@@ -19,7 +19,7 @@ from matplotlib import cm
 import matplotlib 
 import scipy
 def permute_accuracy(predict,y):
-    """Find the best accuracy among all the permutated clustering.
+    """Find the best accuracy among all the possible label permutation.
     Input args:
         predict: the clustering result.
         y: the true label.

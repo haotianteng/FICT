@@ -27,6 +27,7 @@ from fict.fict_train import train
 from gect.gect_train_embedding import train_wrapper
 import sys
 import os
+import argparse
 import random
 import warnings
 import matplotlib.pyplot as plt
@@ -474,19 +475,26 @@ def main(sim_data,base_f):
     return (ari_gene,ari_spatio,ari_sg),(accur,perm_accur_spatio,accr_sg)
 
 if __name__ == "__main__":
-    RUN_TIME = 50
+    parser = argparse.ArgumentParser(prog='dummy_train',
+                                     description='Train on simuulation data.')
+    parser.add_argument('-p', '--prefix', required = True,
+                        help="The prefix of the input dataset.")
+    parser.add_argument('-n',default = 50,
+                        help="The resolution factor of Leiden clustering.")
+    args = parser.parse_args(sys.argv[1:])
+    RUN_TIME = args.n
     aris_gene = []
     aris_spatio = []
     aris_sg = []
     accs_gene = []
     accs_spatio = []
     accs_sg = []
-    base_f = "/home/heavens/CMU/FISH_Clustering/FICT_Sample/simulation/"
+    base_f = args.prefix
     print("Begin simulation %d times."%(RUN_TIME))
     if not sys.warnoptions:
         warnings.simplefilter("ignore")
     
-    with open(os.path.join(base_f,'simulator_addictive.bin'),'rb') as f:
+    with open(os.path.join(base_f,'simulator.bin'),'rb') as f:
         sim = pickle.load(f)
         
     ### mix the gene profile of 2nd and 3rd cell type and generate gene expression

@@ -64,21 +64,21 @@ def gen_simulation(sample_n,
 
 
 if __name__=="__main__":
-#    ### Hyper parameter setting
-#    sample_n = 1000 #Number of samples
-#    n_g = 100 #Number of genes
-#    n_c = 10 #Number of cell type
-#    density = 20 #The average number of neighbour for each cells.
-#    threshold_distance = 1 # The threshold distance of neighbourhood.
-#    gene_col = np.arange(9,164)
-#    coor_col = [5,6]
-#    header = 1
-#    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
-#    gene_mean,gene_std,target_freq,type_prior = get_prior_from_data(data_f,
-#                                                                    gene_col,
-#                                                                    coor_col,
-#                                                                    header,
-#                                                                    n_c)
+    ### Hyper parameter setting
+    sample_n = 1000 #Number of samples
+    n_g = 100 #Number of genes
+    n_c = 10 #Number of cell type
+    density = 20 #The average number of neighbour for each cells.
+    threshold_distance = 1 # The threshold distance of neighbourhood.
+    gene_col = np.arange(9,164)
+    coor_col = [5,6]
+    header = 1
+    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
+    gene_mean,gene_std,target_freq,type_prior = get_prior_from_data(data_f,
+                                                                    gene_col,
+                                                                    coor_col,
+                                                                    header,
+                                                                    n_c)
     ### Generate simulation dataset and load
     sim = gen_simulation(sample_n,
                          n_g,
@@ -86,7 +86,7 @@ if __name__=="__main__":
                          target_gene_mean=gene_mean,
                          target_gene_std=gene_std,
                          target_neighbourhood_frequency=target_freq,
-                         assign_cell_type_method = 'Gibbs-sampling',
+                         assign_cell_type_method = 'Metropolis-swap',
                          assign_round = 10000,
                          soft_factor = density)
     gene_expression,cell_type,cell_neighbour = sim.gen_expression()

@@ -17,6 +17,8 @@ from fict.utils.data_op import KL_divergence
 from math import factorial
 from fict.utils.random_generator import multinomial_wrapper as mp
 from fict.utils.data_op import DataLoader
+from fict.utils.scsim import Scsim
+import time
 import pickle
 
 def save_simulation(sim,file):
@@ -371,7 +373,45 @@ class Simulator():
                 current_expression[mask[i,:]] = 0
             gene_expression.append(current_expression)
         return np.asarray(gene_expression),self.cell_type_assignment,self._neighbourhood_count
-
+    def gen_expression_splatter(self,seed=None):
+        if seed is None:
+            np.random.seed(self.seed)
+        else:
+            np.random.seed(seed)
+        celltype = self.cell_type_assignment
+        n_g = self.gene_n
+        sample_n = self.sample_n
+        celltype_n = self.cell_n
+        deval = 1
+        K = celltype_n
+        doubletfrac = 0
+        ncells = sample_n
+        ngenes=n_g
+        nproggenes = 400
+        ndoublets=int(doubletfrac*ncells)
+        groupid = celltype
+        deloc=deval
+        progdeloc=deval
+        descale=1.0
+        progcellfrac = .35
+        deprob = .025
+        nproggroups = K #Enable program genes in all the groups
+        proggroups = list(range(1, nproggroups+1))
+        print("Simulation using splatter.")
+        simulator = Scsim(ngenes=ngenes, ncells=ncells, ngroups=K,groupid = groupid, libloc=7.64, libscale=0.78,
+                     mean_rate=7.68,mean_shape=0.34, expoutprob=0.00286,
+                     expoutloc=6.15, expoutscale=0.49,
+                     diffexpprob=deprob, diffexpdownprob=0., diffexploc=deloc, diffexpscale=descale,
+                     bcv_dispersion=0.448, bcv_dof=22.087, ndoublets=ndoublets,
+                     nproggenes=nproggenes, progdownprob=0., progdeloc=progdeloc,
+                     progdescale=descale, progcellfrac=progcellfrac, proggoups=proggroups,
+                     minprogusage=.1, maxprogusage=.7, seed=seed)
+        start_time = time.time()
+        simulator.simulate()
+        end_time = time.time()
+        print("Elapsing time is %.2f"%(end_time - start_time))
+        self.gene_expression = np.asarray(simulator.counts)
+        return self.gene_expression,self.cell_type_assignment,self._neighbourhood_count
 class SimDataLoader(DataLoader):
     def __init__(self,
                  gene_expression,
