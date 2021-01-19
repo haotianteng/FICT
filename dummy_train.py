@@ -8,9 +8,12 @@ Created on Fri Apr  3 04:16:13 2020
 import numpy as np
 import pickle
 import seaborn as sns
+import json
 from fict.fict_model import FICT_EM
 from fict.utils.data_op import pca_reduce
 from fict.utils.data_op import embedding_reduce
+from fict.utils.data_op import save_smfish
+from fict.utils.data_op import save_loader
 from fict.utils import embedding as emb
 from fict.utils.data_op import tag2int
 from sklearn.metrics.cluster import adjusted_rand_score
@@ -23,18 +26,22 @@ from fict.fict_train import permute_accuracy
 from fict.fict_train import train
 from gect.gect_train_embedding import train_wrapper
 import sys
+import os
+import random
 import warnings
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from scipy.stats import ttest_ind
 plt.rcParams["font.size"] = "25"
-def mix_gene_profile(simulator, indexs,gene_proportion=1,cell_proportion = 0.7):
+def mix_gene_profile(simulator, indexs,gene_proportion=1,cell_proportion = 0.7,seed = None):
     """mix the gene expression profile of cell types in indexs
     Args:
         simulator: A Simualator instance.
         indexs: The indexs of the cell type want to mixd to.
-        proportion: The proportion of cells that being mixed.
+        gene_proportion: The proportion of genes that being mixed.
+        cell_proportion: The proportion of cells that being mixed.
+        seed: The seed used to generate result
     """
     mix_mean = np.mean(sim.g_mean[indexs,:],axis = 0)
     mix_cov = np.mean(sim.g_cov[indexs,:,:],axis = 0)
@@ -42,7 +49,7 @@ def mix_gene_profile(simulator, indexs,gene_proportion=1,cell_proportion = 0.7):
     np.random.shuffle(perm)
     mix_gene_idx = perm[:int(sim.gene_n*gene_proportion)]
     mix_cov_idx = tuple(np.meshgrid(mix_gene_idx,mix_gene_idx))
-    sim_gene_expression,sim_cell_type,sim_cell_neighbour = sim.gen_expression(drop_rate = None)
+    sim_gene_expression,sim_cell_type,sim_cell_neighbour = sim.gen_expression(drop_rate = None,seed = seed)
     mix_cells = []
     for i in indexs:
         current_mix_mean = np.copy(sim.g_mean[i])
@@ -110,7 +117,7 @@ def accuracy_with_perm(predict,label,perm):
     accur = np.sum([(predict == p) * (label == i) for i,p in enumerate(perm)])
     return accur/n
 
-def main(sim_data):
+def main(sim_data,base_f):
     sim_gene_expression,sim_cell_type,sim_cell_neighbour,mix_mean,mix_cov,mix_cells = sim_data
     mask = np.zeros(len(sim_cell_type),dtype = np.bool)
     mask[mix_cells] = True
@@ -118,15 +125,15 @@ def main(sim_data):
     k_n = 5
     ### train a embedding model from the simulated gene expression
     print("Begin training the embedding model.")
-    np.savez('/home/heavens/CMU/FISH_Clustering/FICT/sim_gene.npz',
+    np.savez(os.path.join(base_f,'sim_gene.npz'),
              feature = sim_gene_expression,
              labels = sim_cell_type)
     class Args:
         pass
     args = Args()
-    args.train_data = '/home/heavens/CMU/FISH_Clustering/FICT/sim_gene.npz'
-    args.eval_data = '/home/heavens/CMU/FISH_Clustering/FICT/sim_gene.npz'
-    args.log_dir = "/home/heavens/CMU/FISH_Clustering/embedding/"
+    args.train_data = os.path.join(base_f,'sim_gene.npz')
+    args.eval_data = os.path.join(base_f,'sim_gene.npz')
+    args.log_dir = base_f
     args.model_name = "simulate_embedding"
     args.embedding_size = reduced_d
     args.batch_size = 1000
@@ -136,22 +143,33 @@ def main(sim_data):
     args.retrain = False
     args.device = None
     train_wrapper(args)
-    embedding_file = "/home/heavens/CMU/FISH_Clustering/embedding/simulate_embedding/"
+    embedding_file = os.path.join(base_f,'simulate_embedding/')
     embedding = emb.load_embedding(embedding_file)
     
-    ### Reduce the simulated gene expression using PCA or embedding
-#    reduced_expression,_ = pca_reduce(sim_gene_expression,dims = reduced_d)
-    reduced_expression,_ = embedding_reduce(sim_gene_expression,embedding = embedding)
+    ### Dimensional reduction of simulated gene expression using PCA or embedding
     class_n,gene_n = sim.g_mean.shape
     plot_freq(sim_cell_neighbour,sim_cell_type,[0,1,2])
     arti_posterior = one_hot_vector(sim_cell_type)[0]
     int_type,tags = tag2int(sim_cell_type)
     np.random.shuffle(arti_posterior)
-    data_loader = RealDataLoader(reduced_expression,
+    data_loader = RealDataLoader(sim_gene_expression,
                                  sim.coor,
                                  threshold_distance = 1,
                                  num_class = class_n,
-                                 cell_labels = sim_cell_type)
+                                 cell_labels = sim_cell_type,
+                                 gene_list = np.arange(sim_gene_expression.shape[1]))
+    data_loader.dim_reduce(method = "Embedding",embedding = embedding)
+    data_folder = os.path.join(base_f,'data/')
+    if not os.path.isdir(data_folder):
+        os.mkdir(data_folder)
+    save_smfish(data_loader,data_folder+str(run_i),is_labeled = True)
+    save_loader(data_loader,data_folder+str(run_i))
+    fict_folder = os.path.join(base_f,'FICT_result/')
+    if not os.path.isdir(fict_folder):
+        os.mkdir(fict_folder)
+    result_f = fict_folder+str(run_i)
+    if not os.path.isdir(result_f):
+        os.mkdir(result_f)
     plt.figure()
     plt.scatter(sim.coor[:,0],sim.coor[:,1],c = sim_cell_type)
     plt.title("Cell scatter plot.")
@@ -196,9 +214,10 @@ def main(sim_data):
     gene_p = np.copy(model_gene.p['g_mean'])
     print("#####################################")
     print("\n")
+    with open(os.path.join(result_f,"gene_model.bn"),'wb+') as f:
+        pickle.dump(model_gene,f)
     
-    
-    ## Train spatio model 
+    ## Train a spatio model with true neighbourhood
     print("#####################################")
     print("Train a spatial model based on true nieghbourhood.")
     model = model_gene
@@ -291,7 +310,8 @@ def main(sim_data):
         print("Likelihood %.2f"%(ll))
     print("#####################################")
     print("\n")
-    
+    with open(os.path.join(result_f,"sg_model.bn"),'wb+') as f:
+        pickle.dump(model,f)
     ### Begin the plot
     plt.close('all')
     fig = plt.figure(figsize = (20,10))
@@ -454,27 +474,31 @@ def main(sim_data):
     return (ari_gene,ari_spatio,ari_sg),(accur,perm_accur_spatio,accr_sg)
 
 if __name__ == "__main__":
-    RUN_TIME = 20
+    RUN_TIME = 50
     aris_gene = []
     aris_spatio = []
     aris_sg = []
     accs_gene = []
     accs_spatio = []
     accs_sg = []
+    base_f = "/home/heavens/CMU/FISH_Clustering/FICT_Sample/simulation/"
     print("Begin simulation %d times."%(RUN_TIME))
     if not sys.warnoptions:
         warnings.simplefilter("ignore")
     
-    with open("/home/heavens/CMU/FISH_Clustering/FICT/simulator.bin",'rb') as f:
+    with open(os.path.join(base_f,'simulator_addictive.bin'),'rb') as f:
         sim = pickle.load(f)
         
     ### mix the gene profile of 2nd and 3rd cell type and generate gene expression
     mix_cell_t = [1,2]
-    sim_gene_expression,sim_cell_type,sim_cell_neighbour,mix_mean,mix_cov,mix_cells = mix_gene_profile(sim,mix_cell_t)
-    sim_data = (sim_gene_expression,sim_cell_type,sim_cell_neighbour,mix_mean,mix_cov,mix_cells)
-    for i in np.arange(RUN_TIME):
-        print("Start the %d simulation"%(i))
-        aris,accrs = main(sim_data)
+    seed_list = [random.randrange(2**32 - 1) for _ in np.arange(RUN_TIME)]
+    for run_i in np.arange(RUN_TIME):
+        mix = mix_gene_profile(sim,mix_cell_t,seed = seed_list[run_i])
+        sim_gene_expression,sim_cell_type,sim_cell_neighbour,mix_mean,mix_cov,mix_cells=mix
+        print(sim_gene_expression.shape)
+        sim_data = (sim_gene_expression,sim_cell_type,sim_cell_neighbour,mix_mean,mix_cov,mix_cells)
+        print("Start the %d simulation"%(run_i))
+        aris,accrs = main(sim_data,base_f)
         aris_gene.append(aris[0])
         aris_spatio.append(aris[1])
         aris_sg.append(aris[2])
@@ -489,6 +513,8 @@ if __name__ == "__main__":
     record['accs_spatio'] = accs_spatio
     record['accs_sg'] = accs_sg
     df = pd.DataFrame(record, columns = list(record.keys()))
+    with open(os.path.join(base_f,'FICT_result/record.json') , 'w+') as f:
+        json.dump(record,f)
     df_long = pd.melt(df,value_vars = ['accs_gene','accs_sg'],
                       var_name = "Model",
                       value_name = "Accuracy")
