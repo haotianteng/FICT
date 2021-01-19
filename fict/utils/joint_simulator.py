@@ -279,9 +279,9 @@ class Simulator():
                 klds = np.empty(self.cell_n)
                 for i, freq in enumerate(self._neighbourhood_frequency):
                     klds[i] = KL_divergence(target_neighbourhood_frequency[i],freq)
-                print("%d iteration, error %.2f"%(iter_n,error))
-                print("KL divergence %s"%(",".join([str(round(x,3)) for x in klds])))
-                print(np.unique(self.cell_type_assignment,return_counts = True))
+#                print("%d iteration, error %.2f"%(iter_n,error))
+#                print("KL divergence %s"%(",".join([str(round(x,3)) for x in klds])))
+#                print(np.unique(self.cell_type_assignment,return_counts = True))
         return error_record
     
     def _assign_probability(self,
