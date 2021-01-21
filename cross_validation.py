@@ -44,7 +44,7 @@ TRAIN_CONFIG['spatio_phase'] = {'gene_factor':1.0,
                                 'nearest_k':10,
                                 'threshold_distance':None,
                                 'renew_rounds':5,
-                                'partial_update':0.1,
+                                'partial_update':1,
                                 'equal_contribute':False}
 
 def load_pickle(f):
