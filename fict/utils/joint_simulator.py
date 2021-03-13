@@ -170,7 +170,7 @@ class Simulator():
     def assign_cell_type(self,
                          target_neighbourhood_frequency,
                          tol = 1e-2,
-                         max_iter = 1e2,
+                         max_iter = 4e2,
                          use_exist_assignment = False,
                          method = None,
                          soft_factor = None,
@@ -201,7 +201,7 @@ class Simulator():
                                     p = self.cell_prior).astype(int)
         self._get_neighbourhood_frequency()
         error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
-        print("0 iteration, error %.2f"%(error))
+        print("    0 iteration, error %.2f"%(error))
         iter_n = 0
         perm = np.arange(self.sample_n)
         cell_types = np.arange(self.cell_n)
@@ -274,9 +274,13 @@ class Simulator():
                     self._get_neighbourhood_count(i=mask)
                 
                     iter_n+=1
-            if iter_n%100 == 0:
+            if iter_n %100 == 0:
+                #Update error every 100 iterations.
+                error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
+            if iter_n%1000 == 0:
                 self._get_neighbourhood_frequency(recount_neighbourhood = False)
                 error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
+                print("%5d iteration, error %.2f"%(iter_n,error))
                 error_record.append(error)
                 klds = np.empty(self.cell_n)
                 for i, freq in enumerate(self._neighbourhood_frequency):
@@ -354,7 +358,7 @@ class Simulator():
                        drop_rate = None):
         """Generate gene expression, need to call assign_cell_type first.
         """
-        gene_expression = []
+        gene_expression = np.empty((self.sample_n,self.gene_n),dtype = float)
         if seed is None:
             np.random.seed(self.seed)
         else:
@@ -364,14 +368,17 @@ class Simulator():
             mask = np.empty((self.sample_n,self.gene_n),dtype = bool)
             for i in np.arange(self.gene_n):
                 mask[:,i] = np.random.choice([True,False],size = (self.sample_n),p = [drop_rate[i],1-drop_rate[i]])
-        for i in range(self.sample_n):
-            current_t = self.cell_type_assignment[i]
-            current_expression = np.random.multivariate_normal(mean = self.g_mean[current_t],cov = self.g_cov[current_t])
+        for i in range(self.cell_n):
+            cell_type_mask = self.cell_type_assignment == i
+            count = np.sum(cell_type_mask)
+            current_expression = np.random.multivariate_normal(mean = self.g_mean[i],
+                                                               cov = self.g_cov[i],
+                                                               size = count)
             if zeroing:
                 current_expression[current_expression<0] = 0
             if drop_rate is not None:
-                current_expression[mask[i,:]] = 0
-            gene_expression.append(current_expression)
+                current_expression[mask[cell_type_mask,:]] = 0
+            gene_expression[cell_type_mask,:] = current_expression
         return np.asarray(gene_expression),self.cell_type_assignment,self._neighbourhood_count
     def gen_expression_splatter(self,seed=None):
         if seed is None:
