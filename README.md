@@ -10,7 +10,7 @@ export PYTHONPATH=$(pwd)/:$PYTHONPATH
 ```
 
 ### Prepare dataset for running
-Currently different FISH project using different data format, so 4 scripts are provided for dataset preparation for different datasets.  
+Currently different FISH project using different data format, so 4 scripts are provided for dataset preparation for different datasets in FICT-SAMPLE tutorial repository.  
 
 ### Sample code
-Please check [FICT-SAMPLE](https://github.com/haotianteng/FICT-SAMPLE) for sample code running FICT.  
+Please check [FICT-SAMPLE](https://github.com/haotianteng/FICT-SAMPLE) for sample code to run FICT.  
