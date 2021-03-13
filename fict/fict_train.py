@@ -107,8 +107,9 @@ def train(model,
                            update_spatio_model = update_spatio,
                            stochastic_update = stochastic_update)
         predict = np.argmax(posterior,axis=0) 
-        accuracy = adjusted_rand_score(predict,y)
-        accur_record.append(accuracy)
+        if y:
+            accuracy = adjusted_rand_score(predict,y)
+            accur_record.append(accuracy)
         log_likelihood.append(ll)
         if i%renew_per_rounds == 0 and renew_neighbourhood:
             for renew_i in np.arange(renew_neighbourhood):
@@ -132,7 +133,8 @@ def train(model,
                 centroid_ellipse(x_batch[0],y,model,axs)
                 plt.show()
             if verbose>0:
-                print("%d Round Accuracy:%f"%(i,accuracy))
+                if y:
+                    print("%d Round Match:%f"%(i,accuracy))
                 if i >0:
                     ll_change = ll-log_likelihood[-2]
                     print("%d Round likelihood change:%f"%(i,ll_change))

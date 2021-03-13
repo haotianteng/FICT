@@ -270,6 +270,7 @@ def run(args):
                 print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
                 print("Use the number of fields %d instead of input %d."%(len(fields),n))
                 n = len(fields)
+	    print("Model training begin, perform dimensional reduction.")
             for i,l in enumerate(loaders):
                 l = RealDataLoader(l.gene_expression,
                                    l.coordinate,
