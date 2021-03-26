@@ -79,14 +79,14 @@ class Simulator():
         gene_n: The number of genes for each cell.
         cell_type_n: The number of cell types.
         density: The number o fcell in the unit cycle(also it's the average neighbourhood)
-        seed: Random seed, default KL_divergenceis 1992.
+        seed: Random seed, default None.
     """
     def __init__(self,
                  sample_n,
                  gene_n,
                  cell_type_n,
                  density,
-                 seed = 1992):
+                 seed = None):
         self.sample_n = sample_n
         self.gene_n = gene_n
         self.cell_n = cell_type_n
@@ -133,16 +133,36 @@ class Simulator():
         self._neighbourhood_count = None
         self._neighbourhood_frequency = None
         
-    def gen_coordinate(self,density,use_knearest = False):
+    def gen_coordinate(self,
+                       density,
+                       use_knearest = False,
+                       ref_coor = None,
+                       rank_criteria = "square"):
         """Random assign the coordinate
         Args:
-            density: How many samples in the unit circle or the k if using_knearest
-                is True.
+            density: The sample density, number of samples in unit circle.
             
         """
         self.density = density
-        self.xrange = np.sqrt(np.pi*self.sample_n/self.density)
-        self.coor = uniform(high = self.xrange,size = (self.sample_n,2))
+        if ref_coor is None:
+            self.xrange = np.sqrt(np.pi*self.sample_n/self.density)
+            self.coor = uniform(high = self.xrange,size = (self.sample_n,2))
+        else:
+            assert len(ref_coor) > self.sample_n
+            central_point = np.median(ref_coor,axis = 0)
+            ref_coor -= central_point
+            if rank_criteria == "square":
+                coor_criteria = np.max(np.abs(ref_coor),axis = 1,keepdims = False)**2*4
+            elif rank_criteria == "euclidean":
+                coor_criteria = np.sqrt(ref_coor[:,0]**2+ref_coor[:,1]**2)**2*np.pi
+            coor_rank = np.argsort(coor_criteria)
+            coor = ref_coor[coor_rank[:self.sample_n],:]
+            effect_area = self.sample_n/density*np.pi
+            scale = np.sqrt(effect_area/coor_criteria[coor_rank[self.sample_n-1]])
+            self.coor = coor * scale
+            self.xrange = max(self.coor[-1,0],self.coor[-1,1])
+            self.ref_coor = ref_coor * scale
+            
         self.distance_matrix = cdist(self.coor,self.coor,'euclidean')
         self.adjacency = np.zeros((self.sample_n,self.sample_n),dtype = bool)
         if use_knearest:
@@ -238,6 +258,8 @@ class Simulator():
                         dist_before += KL_divergence(target_neighbourhood_frequency[k],freq)
                     label[j],label[i] = label[i],label[j]
                     self._get_neighbourhood_count(nb_indexs)
+                    # Update the neighbourhood count for the neighbourhood
+                    # of swap pairs only.
                     self._get_neighbourhood_frequency(recount_neighbourhood = False)
                     dist_after = 0
                     for k, freq in enumerate(self._neighbourhood_frequency):
@@ -450,7 +472,7 @@ if __name__ == "__main__":
     model_f = "/home/heavens/CMU/FISH_Clustering/test_sim1"
     
     ### Data preprocessing
-#    data = pd.read_excel(data_f,header = header)
+    data = pd.read_excel(data_f,header = header)
     gene_expression = data.iloc[:,gene_col]
     cell_types = data['Cell_class']
     type_tags = np.unique(cell_types)
