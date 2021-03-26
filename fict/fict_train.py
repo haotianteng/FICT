@@ -107,7 +107,7 @@ def train(model,
                            update_spatio_model = update_spatio,
                            stochastic_update = stochastic_update)
         predict = np.argmax(posterior,axis=0) 
-        if y:
+        if y is not None:
             accuracy = adjusted_rand_score(predict,y)
             accur_record.append(accuracy)
         log_likelihood.append(ll)
@@ -133,7 +133,7 @@ def train(model,
                 centroid_ellipse(x_batch[0],y,model,axs)
                 plt.show()
             if verbose>0:
-                if y:
+                if y is not None:
                     print("%d Round Match:%f"%(i,accuracy))
                 if i >0:
                     ll_change = ll-log_likelihood[-2]
