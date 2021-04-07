@@ -144,6 +144,7 @@ class Simulator():
             
         """
         self.density = density
+        coor_idxs = None
         if ref_coor is None:
             self.xrange = np.sqrt(np.pi*self.sample_n/self.density)
             self.coor = uniform(high = self.xrange,size = (self.sample_n,2))
@@ -156,7 +157,8 @@ class Simulator():
             elif rank_criteria == "euclidean":
                 coor_criteria = np.sqrt(ref_coor[:,0]**2+ref_coor[:,1]**2)**2*np.pi
             coor_rank = np.argsort(coor_criteria)
-            coor = ref_coor[coor_rank[:self.sample_n],:]
+            coor_idxs = coor_rank[:self.sample_n]
+            coor = ref_coor[coor_idxs,:]
             effect_area = self.sample_n/density*np.pi
             scale = np.sqrt(effect_area/coor_criteria[coor_rank[self.sample_n-1]])
             self.coor = coor * scale
@@ -173,6 +175,7 @@ class Simulator():
         else:
             self.adjacency = self.distance_matrix<1
             self.exclude_adjacency = self.adjacency ^ np.eye(self.sample_n).astype(bool)
+        return coor_idxs
                 
         
     @property
@@ -197,7 +200,8 @@ class Simulator():
                          annealing = False,
                          initial_temperature = 20,
                          half_decay = 100,
-                         local_criteria = True):
+                         local_criteria = True,
+                         ref_assignment = None):
         """Generate cell type assignment iteratively from a given neighbourhood
         frequency, require the coordinates being generated first by calling
         self.gen_coordinate.
@@ -294,8 +298,13 @@ class Simulator():
                                                         p = assign_prob)[0]
                     self.cell_type_assignment[i] = assign_cell_type
                     self._get_neighbourhood_count(i=mask)
-                
                     iter_n+=1
+            elif method=="Direct-assignment":
+                self.cell_type_assignment = ref_assignment
+                self._get_neighbourhood_count()
+                self._get_neighbourhood_frequency(recount_neighbourhood = False)
+                return None
+                
             if iter_n %100 == 0:
                 #Update error every 100 iterations.
                 error = np.linalg.norm(self._neighbourhood_frequency-target_neighbourhood_frequency)
