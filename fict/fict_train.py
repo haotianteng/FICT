@@ -138,8 +138,8 @@ def train(model,
                 if i >0:
                     ll_change = ll-log_likelihood[-2]
                     print("%d Round likelihood change:%f"%(i,ll_change))
-                    # if abs(ll_change)<tol:
-                    #     return accur_record,log_likelihood
+                    if abs(ll_change)<tol:
+                        return accur_record,log_likelihood
                 else:
                     print("0 Round likelihood:%f"%(ll))
     return accur_record,log_likelihood
