@@ -128,7 +128,7 @@ def train(model,
                     else:
                         print("\tRenew neighbourhood %d, likelihood change:%f"%(renew_i,ll_renew-ll_b))
         if i%report_per_rounds == 0:
-            if verbose>1:
+            if verbose>1 and y:
                 fig,axs = plt.subplots()
                 centroid_ellipse(x_batch[0],y,model,axs)
                 plt.show()
