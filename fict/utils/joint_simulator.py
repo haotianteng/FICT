@@ -92,7 +92,7 @@ class Simulator():
         self.cell_n = cell_type_n
         self.seed = seed
         self.target_freq = None
-        self.densty = None
+        self.density = None
         self.xrange = None
         self.coor = None
         self.distance_matrix = None
@@ -107,10 +107,10 @@ class Simulator():
         target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
         result = valid_neighbourhood_frequency(target_freq)
         self.target_freq = result[0]
-        self.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
-        self.gen_coordinate(density = density)
-        sim.assign_cell_type(target_neighbourhood_frequency=self.target_freq)
-        return sim
+        self.gen_parameters(gene_mean_prior = gene_mean[:,:self.gene_n])
+        self.gen_coordinate(density = self.density)
+        self.assign_cell_type(target_neighbourhood_frequency=self.target_freq)
+        
     def gen_parameters(self,
                         gene_mean_prior = None,
                         cell_prior = None,
@@ -165,18 +165,22 @@ class Simulator():
             self.xrange = max(self.coor[-1,0],self.coor[-1,1])
             self.ref_coor = ref_coor * scale
             
+        self.calculate_adjacency(density = density,use_knearest = use_knearest)
+        return coor_idxs
+                
+    def calculate_adjacency(self,density = None,use_knearest = False):
+        if not density:
+            density = self.density
         self.distance_matrix = cdist(self.coor,self.coor,'euclidean')
         self.adjacency = np.zeros((self.sample_n,self.sample_n),dtype = bool)
         if use_knearest:
             for i,dist in enumerate(self.distance_matrix):
                 sort_idx = np.argsort(dist)
-                self.adjacency[i,sort_idx[:density+1]]
+                self.adjacency[i,sort_idx[:density+1]] = True
             self.exclude_adjacency = self.adjacency ^ np.eye(self.sample_n).astype(bool)
         else:
             self.adjacency = self.distance_matrix<1
             self.exclude_adjacency = self.adjacency ^ np.eye(self.sample_n).astype(bool)
-        return coor_idxs
-                
         
     @property
     def neighbour_frequency(self):
@@ -468,43 +472,52 @@ class SimDataLoader(DataLoader):
 
 
 if __name__ == "__main__":
-    ### Hyper parameter setting
-    sample_n = 1000 #Number of samples
-    n_g = 100 #Number of genes
-    n_c = 10 #Number of cell type
-    density = 20 #The average number of neighbour for each cells.
-    threshold_distance = 1 # The threshold distance of neighbourhood.
-    gene_col = np.arange(9,164)
-    coor_col = [5,6]
-    header = 1
-    data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
-    model_f = "/home/heavens/CMU/FISH_Clustering/test_sim1"
+    # ### Hyper parameter setting
+    # sample_n = 1000 #Number of samples
+    # n_g = 100 #Number of genes
+    # n_c = 10 #Number of cell type
+    # density = 20 #The average number of neighbour for each cells.
+    # threshold_distance = 1 # The threshold distance of neighbourhood.
+    # gene_col = np.arange(9,164)
+    # coor_col = [5,6]
+    # header = 1
+    # data_f = "/home/heavens/CMU/FISH_Clustering/FICT/example_data2/aau5324_Moffitt_Table-S7.xlsx"
+    # model_f = "/home/heavens/CMU/FISH_Clustering/test_sim1"
     
-    ### Data preprocessing
-    data = pd.read_excel(data_f,header = header)
-    gene_expression = data.iloc[:,gene_col]
-    cell_types = data['Cell_class']
-    type_tags = np.unique(cell_types)
-    coordinates = data.iloc[:,coor_col]
+    # ### Data preprocessing
+    # data = pd.read_excel(data_f,header = header)
+    # gene_expression = data.iloc[:,gene_col]
+    # cell_types = data['Cell_class']
+    # type_tags = np.unique(cell_types)
+    # coordinates = data.iloc[:,coor_col]
     
-    ### Choose only the n_c type cells
-    if len(type_tags)<n_c:
-        raise ValueError("Only %d cell types presented in the dataset, but require %d, reduce the number of cell type assigned."%(len(type_tags),n_c))
-    mask = np.asarray([False]*len(cell_types))
-    for tag in type_tags[:n_c]:
-        mask = np.logical_or(mask,cell_types==tag)
-    gene_expression = gene_expression[mask]
-    cell_types = np.asarray(cell_types[mask])
-    coordinates = np.asarray(coordinates[mask])
+    # ### Choose only the n_c type cells
+    # if len(type_tags)<n_c:
+    #     raise ValueError("Only %d cell types presented in the dataset, but require %d, reduce the number of cell type assigned."%(len(type_tags),n_c))
+    # mask = np.asarray([False]*len(cell_types))
+    # for tag in type_tags[:n_c]:
+    #     mask = np.logical_or(mask,cell_types==tag)
+    # gene_expression = gene_expression[mask]
+    # cell_types = np.asarray(cell_types[mask])
+    # coordinates = np.asarray(coordinates[mask])
     
-    ### Generate prior from the given dataset.
-    gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
-    drop_rate = np.sum(gene_expression==0,axis = 0)/(gene_expression.shape[0])
-    neighbour_freq_prior,tags,type_count = get_nf_prior(coordinates,cell_types)
-    type_prior = type_count/np.sum(type_count)
-    target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
-    result = valid_neighbourhood_frequency(target_freq)
-    target_freq = result[0]
+    # ### Generate prior from the given dataset.
+    # gene_mean,gene_std = get_gene_prior(gene_expression,cell_types)
+    # drop_rate = np.sum(gene_expression==0,axis = 0)/(gene_expression.shape[0])
+    # neighbour_freq_prior,tags,type_count = get_nf_prior(coordinates,cell_types)
+    # type_prior = type_count/np.sum(type_count)
+    # target_freq = (neighbour_freq_prior+0.1)/np.sum(neighbour_freq_prior+0.1,axis=1,keepdims=True)
+    # result = valid_neighbourhood_frequency(target_freq)
+    # target_freq = result[0]
+    
+    # ### Generate simulation dataset and load
+    # sim = Simulator(sample_n,n_g,n_c,density)
+    # sim.gen_parameters(gene_mean_prior = gene_mean[:,:n_g])
+    # sim.gen_coordinate(density = density)
+    # sim.assign_cell_type(target_neighbourhood_frequency=target_freq, method = "assign-neighbour")
+    # gene_expression,cell_type,cell_neighbour = sim.gen_expression(drop_rate = drop_rate[:n_g])
+    # save_simulation(sim,model_f)
+    # sim2 = load_simulation(model_f)
     
     ### Generate simulation dataset and load
     sim = Simulator(sample_n,n_g,n_c,density)
