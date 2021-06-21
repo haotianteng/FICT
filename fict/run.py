@@ -108,41 +108,6 @@ def save_model(model,output,model_name = "sg_model_best.bn"):
         pickle.dump(model,f)
 
 def run(args):
-    pass
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog='FICT-SAMPLE',
-                                     description='Train on simuulation data.')
-    parser.add_argument('-p', '--prefix', required = True,
-                        help="The prefix of the input dataset, for simulation data, it's the folder contains simulator.bin file.")
-    parser.add_argument('-o', '--output', required = True,
-                        help="The output folder of the model.")
-    parser.add_argument('-c', '--config', default = None,
-                        help="The configure file, if None then use default configuration.")
-    parser.add_argument('--n_type',default = 3, type = int,
-                        help="Number of cell types.")
-    parser.add_argument('--hidden',default = 10,type = int,
-                        help="Hidden size of the denoise auto-encoder.")
-    parser.add_argument('--restart', default = None, type = int,
-                        help="How many times we wanna restart the model.")
-#    args = parser.parse_args(sys.argv[1:])
-    
-    
-    ## Debugging code ##
-    class Args:
-        pass
-    args = Args()
-    args.prefix = "/home/heavens/Tools/FICT-SAMPLE/datasets/MERFISH/0"
-    args.output = "/home/heavens/Tools/FICT-SAMPLE/datasets/MERFISH/output"
-    args.config = None
-    args.n_type = 3
-    args.hidden = 10
-    args.plot = True
-    args.restart = 30
-    if not os.path.isdir(args.output):
-        os.mkdir(args.output)
-    ##
-    
     ## Load data using data loader
     try:
         with open(args.prefix,'rb') as f:    
@@ -211,3 +176,38 @@ if __name__ == "__main__":
             save_model(best_model,args.output)
             predict_sg = np.argmax(posterior_sg,axis=0)
             np.savetxt(os.path.join(args.output,'cluster_result.csv'),predict_sg.astype(int))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(prog='FICT-SAMPLE',
+                                     description='Train on simuulation data.')
+    parser.add_argument('-p', '--prefix', required = True,
+                        help="The prefix of the input dataset, for simulation data, it's the folder contains simulator.bin file.")
+    parser.add_argument('-o', '--output', required = True,
+                        help="The output folder of the model.")
+    parser.add_argument('-c', '--config', default = None,
+                        help="The configure file, if None then use default configuration.")
+    parser.add_argument('--n_type',default = 3, type = int,
+                        help="Number of cell types.")
+    parser.add_argument('--hidden',default = 10,type = int,
+                        help="Hidden size of the denoise auto-encoder.")
+    parser.add_argument('--restart', default = None, type = int,
+                        help="How many times we wanna restart the model.")
+    args = parser.parse_args(sys.argv[1:])
+    
+    
+    # ## Debugging code ##
+    # class Args:
+    #     pass
+    # args = Args()
+    # args.prefix = "/home/heavens/Tools/FICT-SAMPLE/datasets/MERFISH/0"
+    # args.output = "/home/heavens/Tools/FICT-SAMPLE/datasets/MERFISH/output"
+    # args.config = None
+    # args.n_type = 3
+    # args.hidden = 10
+    # args.plot = True
+    # args.restart = 30
+    # ##
+
+    if not os.path.isdir(args.output):
+        os.mkdir(args.output)
+    
