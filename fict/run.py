@@ -107,7 +107,7 @@ def save_model(model,output,model_name = "sg_model_best.bn"):
     with open(os.path.join(output,"sg_model_best.bn"),'wb+') as f:
         pickle.dump(model,f)
 
-def run(args):
+def main(args):
     ## Load data using data loader
     try:
         with open(args.prefix,'rb') as f:    
@@ -125,7 +125,7 @@ def run(args):
                                delimiter = ' ',
                                header = None) 
         except:
-            print("Can't find data in the given location, either a data loader\
+            raise FileNotFoundError("Can't find data in the given location, either a data loader\
                   or .exrpession and .coordinates files can be found.")
     embedding = train_embedding(ge,args.hidden,args.output)
     data_loader = RealDataLoader(ge,
@@ -218,4 +218,4 @@ if __name__ == "__main__":
 
     if not os.path.isdir(args.output):
         os.mkdir(args.output)
-    
+    main(args)   
