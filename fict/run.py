@@ -176,6 +176,12 @@ def run(args):
             save_model(best_model,args.output)
             predict_sg = np.argmax(posterior_sg,axis=0)
             np.savetxt(os.path.join(args.output,'cluster_result.csv'),predict_sg.astype(int))
+        if args.save_all:
+            current = os.path.join(args.output,str(i))
+            if not os.path.isdir(current):
+                os.mkdir(current)
+            save_model(model,current)
+            np.savetxt(os.path.join(current,'cluster_result.csv'),predict_sg.astype(int))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='FICT-SAMPLE',
@@ -192,6 +198,8 @@ if __name__ == "__main__":
                         help="Hidden size of the denoise auto-encoder.")
     parser.add_argument('--restart', default = None, type = int,
                         help="How many times we wanna restart the model.")
+    parser.add_argument('--save_all', action = "store_true", type = bool,
+                        help="Save all the restarting models.")
     args = parser.parse_args(sys.argv[1:])
     
     
