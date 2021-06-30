@@ -24,8 +24,9 @@ class RealDataLoader(dop.DataLoader):
     def __init__(self,
                  gene_expression,
                  cell_coordinate,
-                 threshold_distance,
                  num_class,
+                 threshold_distance=None,
+                 k_nearest = None,
                  gene_list = None,
                  field = None,
                  cell_labels = None,
@@ -43,8 +44,10 @@ class RealDataLoader(dop.DataLoader):
         else:
             self.coordinate = cell_coordinate
         self.field = field.reshape((field.shape[0]))
-        self.adjacency = dop.get_adjacency(self.coordinate,threshold_distance)
-        self.exclude_adjacency = dop.get_adjacency(self.coordinate,threshold_distance,exclude_self = True)
+        if threshold_distance:
+            self.adjacency = dop.get_adjacency(self.coordinate,threshold_distance)
+        elif k_nearest:
+            self.adjacency = dop.get_adjacency_knearest(self.coordinate,nearest_k=k_nearest)
         self.for_eval = for_eval
         self.cell_labels = cell_labels
         self.type_prob = None
@@ -66,11 +69,12 @@ class RealDataLoader(dop.DataLoader):
             if (nearest_k is None) and (threshold_distance is None):
                 raise TypeError("renew_neighbourhood require at least input one of\
                                 the following arguments:threshold_distance, nearest_k")
-            if threshold_distance is not None:
+            if threshold_distance:
                 self.adjacency = dop.get_adjacency(self.coordinate,
                                                    threshold_distance,
                                                    exclude_self = exclude_self)
-            elif nearest_k is not None:
+                print(self.adjacency)
+            elif nearest_k:
                 self.adjacency = dop.get_adjacency_knearest(self.coordinate,
                                                   nearest_k,
                                                   exclude_self = exclude_self)
