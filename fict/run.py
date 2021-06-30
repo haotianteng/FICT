@@ -127,6 +127,7 @@ def main(args):
         except:
             raise FileNotFoundError("Can't find data in the given location, either a data loader\
                   or .exrpession and .coordinates files can be found.")
+    TRAIN_CONFIG['spatio_phase']['threshold_distance'] = args.thres_dist
     embedding = train_embedding(ge,args.hidden,args.output)
     data_loader = RealDataLoader(ge,
                                  coor,
@@ -180,8 +181,9 @@ def main(args):
             current = os.path.join(args.output,str(i))
             if not os.path.isdir(current):
                 os.mkdir(current)
-            save_model(model,current)
+            save_model(model,current,model_name = "sg_model.bn")
             np.savetxt(os.path.join(current,'cluster_result.csv'),predict_sg.astype(int))
+    np.savetxt(os.path.join(args.output,'lls.csv'),np.asarray(lls))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='FICT-SAMPLE',
@@ -198,7 +200,9 @@ if __name__ == "__main__":
                         help="Hidden size of the denoise auto-encoder.")
     parser.add_argument('--restart', default = None, type = int,
                         help="How many times we wanna restart the model.")
-    parser.add_argument('--save_all', action = "store_true", type = bool,
+    parser.add_argument('--thres_dist',default = 1.0, type = float,
+                        help="The threshold distance of the neighbourhood.")
+    parser.add_argument('--save_all', action = "store_true",
                         help="Save all the restarting models.")
     args = parser.parse_args(sys.argv[1:])
     
