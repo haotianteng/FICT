@@ -339,7 +339,8 @@ def run(args):
                                            prior_factor = 0)
             loaders[i].renew_neighbourhood(e1.T,
                                            nearest_k =k_nearest,
-                                           threshold_distance = thres_dist)
+                                           threshold_distance = thres_dist,
+                                           update_adj = True)
             for k in np.arange(renew_round):
                 e1,_,_ = models[i].expectation(batch_i,
                                                gene_factor = 1,
