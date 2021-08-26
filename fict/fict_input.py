@@ -19,7 +19,7 @@ class RealDataLoader(dop.DataLoader):
         threshold_distance: A float indicate the thershold distance of two cells
             being considered as neighbour.
         num_class:The number of class.
-        cell_labels: A N-by-1 matrix indicate the true label of cell types.
+        cell_labels (option): A N-by-1 matrix indicate the true label of cell types.
     """
     def __init__(self,
                  gene_expression,
@@ -73,7 +73,6 @@ class RealDataLoader(dop.DataLoader):
                 self.adjacency = dop.get_adjacency(self.coordinate,
                                                    threshold_distance,
                                                    exclude_self = exclude_self)
-                print(self.adjacency)
             elif nearest_k:
                 self.adjacency = dop.get_adjacency_knearest(self.coordinate,
                                                   nearest_k,
