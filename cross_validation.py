@@ -270,7 +270,7 @@ def run(args):
                 print("Warning, the maximum k for k-fold cross-validation is %d"%(len(fields)))
                 print("Use the number of fields %d instead of input %d."%(len(fields),n))
                 n = len(fields)
-	    print("Model training begin, perform dimensional reduction.")
+            print("Model training begin, perform dimensional reduction.")
             for i,l in enumerate(loaders):
                 l = RealDataLoader(l.gene_expression,
                                    l.coordinate,
@@ -339,7 +339,8 @@ def run(args):
                                            prior_factor = 0)
             loaders[i].renew_neighbourhood(e1.T,
                                            nearest_k =k_nearest,
-                                           threshold_distance = thres_dist)
+                                           threshold_distance = thres_dist,
+                                           update_adj = True)
             for k in np.arange(renew_round):
                 e1,_,_ = models[i].expectation(batch_i,
                                                gene_factor = 1,

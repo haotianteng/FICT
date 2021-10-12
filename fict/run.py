@@ -5,9 +5,10 @@ Created on Fri Jun 11 19:34:50 2021
 
 @author: haotian teng
 """
-import pickle
 import os
 import sys
+import json
+import pickle
 import argparse
 import numpy as np
 import pandas as pd
@@ -126,18 +127,21 @@ def run(args):
                                header = None) 
         except:
             raise FileNotFoundError("Can't find data in the given location, either a data loader\
-                  or .exrpession and .coordinates files can be found.")
+                  or .exrpession and .coordinates files can't be found.")
+    TRAIN_CONFIG['spatio_phase']['threshold_distance'] = args.thres_dist
+    TRAIN_CONFIG['spatio_phase']['nearest_k'] = args.k
     embedding = train_embedding(ge,args.hidden,args.output)
     data_loader = RealDataLoader(ge,
                                  coor,
-                                 threshold_distance = 1,
+                                 threshold_distance = args.thres_dist,
+                                 k_nearest=args.k,
                                  num_class = args.n_type,
                                  cell_labels = None,
                                  gene_list = np.arange(ge.shape[1]),
                                  for_eval = True)
     model = load_train(data_loader,num_class=args.n_type)
     data_loader.dim_reduce(method = "Embedding",embedding = embedding)
-    repeat = args.restart if args.restart else 1
+    repeat = args.restart 
     best_model = None
     mll = None
     lls = []
@@ -149,8 +153,8 @@ def run(args):
                                              spatio_factor = 0,
                                              prior_factor = 0)
         data_loader.renew_neighbourhood(posterior_sg.T,
-                                        nearest_k =None,
-                                        threshold_distance = 1)
+                                        nearest_k =args.k,
+                                        threshold_distance = args.thres_dist)
         batch = data_loader.xs
         for k in np.arange(30):
             posterior_sg,_,_ = model.expectation(batch,
@@ -159,8 +163,8 @@ def run(args):
                                                  prior_factor = 0,
                                                  equal_contrib = False)
             data_loader.renew_neighbourhood(posterior_sg.T,
-                                            nearest_k =None,
-                                            threshold_distance = 1,
+                                            nearest_k =args.k,
+                                            threshold_distance = args.thres_dist,
                                             partial_update = 0.1)
             batch = data_loader.xs
         posterior_sg,_,ps = model.expectation(batch,
@@ -180,8 +184,9 @@ def run(args):
             current = os.path.join(args.output,str(i))
             if not os.path.isdir(current):
                 os.mkdir(current)
-            save_model(model,current)
+            save_model(model,current,model_name = "sg_model.bn")
             np.savetxt(os.path.join(current,'cluster_result.csv'),predict_sg.astype(int))
+    np.savetxt(os.path.join(args.output,'lls.csv'),np.asarray(lls))
 
 def main():
     parser = argparse.ArgumentParser(prog='FICT-SAMPLE',
@@ -192,17 +197,33 @@ def main():
                         help="The output folder of the model.")
     parser.add_argument('-c', '--config', default = None,
                         help="The configure file, if None then use default configuration.")
-    parser.add_argument('--n_type',default = 3, type = int,
-                        help="Number of cell types.")
-    parser.add_argument('--hidden',default = 10,type = int,
-                        help="Hidden size of the denoise auto-encoder.")
+    parser.add_argument('--n_type',default = None, type = int,
+                        help="Number of cell types, this will override the argument in config.")
+    parser.add_argument('--hidden',default = None,type = int,
+                        help="Hidden size of the denoise auto-encoder, this will overwrite the argument in config.")
     parser.add_argument('--restart', default = None, type = int,
                         help="How many times we wanna restart the model.")
+    parser.add_argument('--thres_dist',default = None, type = float,
+                        help="The threshold distance of the neighbourhood.")
+    parser.add_argument('-k',default = None, type = int,
+                        help="The number of nearst neighbours.")
     parser.add_argument('--save_all', action = "store_true",
                         help="Save all the restarting models.")
     args = parser.parse_args(sys.argv[1:])
+    if not args.thres_dist and not args.k:
+        args.thres_dist = 1
+    if args.config:
+        with open(args.config,'r') as f:
+            config = json.load(f)
+        args.thres_dist = args.thres_dist if args.thres_dist else config["threshold_distance"]
+        args.k = args.k if args.k else config['spatio_phase']["nearest_k"]
+        args.n_type = args.n_type if args.n_type else config["n_class"]
+        args.hidden = args.hidden if args.hidden else config["reduced_dim"] 
+    args.hidden = args.hidden if args.hidden else 20
+    args.n_type = args.n_type if args.n_type else 3
+    args.restart = args.restart if args.restart else 1
     
-    
+        
     # ## Debugging code ##
     # class Args:
     #     pass
