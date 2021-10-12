@@ -107,7 +107,7 @@ def save_model(model,output,model_name = "sg_model_best.bn"):
     with open(os.path.join(output,"sg_model_best.bn"),'wb+') as f:
         pickle.dump(model,f)
 
-def main(args):
+def run(args):
     ## Load data using data loader
     try:
         with open(args.prefix,'rb') as f:    
@@ -183,7 +183,7 @@ def main(args):
             save_model(model,current)
             np.savetxt(os.path.join(current,'cluster_result.csv'),predict_sg.astype(int))
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(prog='FICT-SAMPLE',
                                      description='Train on simuulation data.')
     parser.add_argument('-p', '--prefix', required = True,
@@ -198,7 +198,7 @@ if __name__ == "__main__":
                         help="Hidden size of the denoise auto-encoder.")
     parser.add_argument('--restart', default = None, type = int,
                         help="How many times we wanna restart the model.")
-    parser.add_argument('--save_all', action = "store_true", type = bool,
+    parser.add_argument('--save_all', action = "store_true",
                         help="Save all the restarting models.")
     args = parser.parse_args(sys.argv[1:])
     
@@ -218,4 +218,7 @@ if __name__ == "__main__":
 
     if not os.path.isdir(args.output):
         os.mkdir(args.output)
-    main(args)   
+    run(args)   
+
+if __name__ == "__main__":
+    main()
