@@ -15,7 +15,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """)
 
 install_requires=[
-'numpy==1.18.5',
+'numpy==1.22.0',
 'sklearn',
 'pandas==1.0.5',
 'matplotlib==3.2.2',
