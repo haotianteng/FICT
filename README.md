@@ -1,5 +1,7 @@
 ## FICT - FISH Iterative Cell Typing  
-## Is a package for achieve accurate cell clustering by iteratively incorporating neighbourhood information using Expectation-Maximization algorithm, for Fluorescence in situ hybridization(FISH) technique.
+### is a package facilitates accurate cell clustering by iteratively incorporating neighborhood information using the Expectation-Maximization algorithm, designed for data generated through the Fluorescence in situ Hybridization (FISH) technique
+
+![Method](https://github.com/haotianteng/FICT/assets/11155295/3dbef51f-46d1-4af0-b518-864f67163af6)
 
 ### Installation
 ```bash
@@ -19,3 +21,6 @@ Please check [FICT-SAMPLE](https://github.com/haotianteng/FICT-SAMPLE) for sampl
 ### Citing FICT
 If you used FICT in your work, please cite:
 > Teng, H., Yuan, Y., & Bar-Joseph, Z. (2021). Clustering Spatial Transcriptomics Data. Bioinformatics.
+
+### Issue report and contact
+If you find any problem during using FICT, please don't hesitate to submit an issue through Github, or directly contact us through the email haotiant@andrew.cmu.edu
